@@ -714,7 +714,7 @@ function replaceHolidayYear(config, year, holidays) {
 
 /* ---------- user document ---------- */
 
-const USER_FIELDS = ["schemaVersion", "id", "name", "countOfficeStar", "confirmedThrough", "days", "notes"];
+const USER_FIELDS = ["schemaVersion", "id", "name", "countOfficeStar", "countPlanned", "confirmedThrough", "days", "notes"];
 const NOTE_KEYS = {
   days: (key) => isDate(key),
   weeks: (key) => isDate(key) && weekday(key) === 0,
@@ -728,6 +728,7 @@ function parseUser(raw) {
   if (!Number.isInteger(raw.id) || raw.id < 1) throw new ValidationError("User id must be a positive integer");
   if (typeof raw.name !== "string") throw new ValidationError("Name must be text");
   if (typeof raw.countOfficeStar !== "boolean") throw new ValidationError("countOfficeStar must be true or false");
+  if (typeof raw.countPlanned !== "boolean") throw new ValidationError("countPlanned must be true or false");
   if (raw.confirmedThrough !== null && !isDate(raw.confirmedThrough)) throw new ValidationError("confirmedThrough must be a date or null");
   if (!isPlainObject(raw.days)) throw new ValidationError("days must be an object");
   const days = {};
@@ -748,6 +749,7 @@ function parseUser(raw) {
     id: raw.id,
     name: raw.name.trim(),
     countOfficeStar: raw.countOfficeStar,
+    countPlanned: raw.countPlanned,
     confirmedThrough: raw.confirmedThrough,
     days,
     notes: parseNotes(raw.notes),
@@ -785,6 +787,7 @@ function userDocument(user) {
     id: user.id,
     name: user.name,
     countOfficeStar: user.countOfficeStar,
+    countPlanned: user.countPlanned,
     confirmedThrough: user.confirmedThrough,
     days: sorted(user.days),
     notes: { days: sorted(user.notes.days), weeks: sorted(user.notes.weeks), months: sorted(user.notes.months) },
@@ -792,7 +795,7 @@ function userDocument(user) {
 }
 
 function createUser(id, name = "") {
-  return parseUser({ schemaVersion: 1, id, name, countOfficeStar: false, confirmedThrough: null, days: {}, notes: emptyNotes() });
+  return parseUser({ schemaVersion: 1, id, name, countOfficeStar: false, countPlanned: false, confirmedThrough: null, days: {}, notes: emptyNotes() });
 }
 
 function usersDocument(list) {
@@ -908,7 +911,7 @@ function dayFacts(staticConfig, user, iso) {
 /**
  * Current method: the Sunday–Saturday week that contains `iso` plus the three weeks before it.
  * `view.today` splits counted days into done (on or before today) and planned (after today);
- * `view.includePlanned` adds planned days to the count (the sheet's "Planned" switch); the default counts done days only.
+ * `view.countPlanned` adds planned days to the count (the sheet's "Planned" switch); the default counts done days only.
  */
 function rolling(staticConfig, user, iso, view = {}) {
   const end = weekSaturday(iso);
@@ -934,7 +937,7 @@ function summarize(staticConfig, user, start, end, formula, view) {
   const confirmedCounted = facts.filter((day) => day.counted && day.confirmed).length;
   const doneCounted = facts.filter((day) => day.counted && isDone(day)).length;
   const plannedCounted = facts.filter((day) => day.counted && !isDone(day)).length;
-  const counted = view.includePlanned ? doneCounted + plannedCounted : doneCounted;
+  const counted = view.countPlanned ? doneCounted + plannedCounted : doneCounted;
   const daysPerWeek = thresholdFor(staticConfig, end);
   const expected = expectedFor(eligible, daysPerWeek, formula);
   const needed = Math.max(0, expected - counted);
@@ -995,13 +998,6 @@ function createStore(storage) {
     setOpenId(id) {
       storage.setItem(openKey(), String(id));
     },
-    loadView(defaults) {
-      try { return { ...defaults, ...JSON.parse(storage.getItem(viewKey()) ?? "{}") }; }
-      catch { return { ...defaults }; }
-    },
-    saveView(view) {
-      storage.setItem(viewKey(), JSON.stringify(view));
-    },
   };
 }
 
@@ -1021,11 +1017,6 @@ function openKey() {
   return "attendance:openUser";
 }
 
-function viewKey() {
-  return "attendance:view";
-}
-
-
 const PRESENCE = { home: "Home", office: "Office", officeStar: "Office*" };
 const OFF = { none: "Working", leave: "Leave", holiday: "Holiday" };
 const KEYS = { o: ["presence", "office"], s: ["presence", "officeStar"], w: ["presence", "wfh"], l: ["off", "leave"] };
@@ -1040,7 +1031,6 @@ const today = todayISO();
 let shared = store.loadStatic(embedded);
 let users = [];
 let user;
-let view = store.loadView({ includePlanned: false });
 let exported = "";
 let tab = "plan";
 let focusMonth = today.slice(0, 7);
@@ -1052,7 +1042,7 @@ let centred = null; // the month the sidebar last scrolled into view
 
 /** Rolling and monthly results for the planner: today splits done from planned. */
 function lens() {
-  return { ...view, today };
+  return { countPlanned: user.countPlanned, today };
 }
 
 const $chrome = document.querySelector(".chrome");
@@ -1087,7 +1077,7 @@ function render() {
   $lens.hidden = tab !== "plan";
   $lens.replaceChildren(
     toggle("Count Office*", "Office*", user.countOfficeStar, (on) => { user = { ...user, countOfficeStar: on }; persist(); }),
-    toggle("Count planned", "Planned", view.includePlanned, (on) => { view = { ...view, includePlanned: on }; store.saveView(view); render(); }),
+    toggle("Count planned", "Planned", user.countPlanned, (on) => { user = { ...user, countPlanned: on }; persist(); }),
   );
   const old = $view.querySelector(".side");
   const previous = old && { left: old.scrollLeft, top: old.scrollTop };
@@ -1367,7 +1357,7 @@ function openWeekPopover(saturday) {
       r.needed > 0 ? el("span", "short", ` · ${r.needed} more by ${pretty(r.end)}`) : r.expected === 0 ? " · nothing expected" : " · on track"),
     el("div", "facts",
       el("span", "", el("b", "", String(r.doneCounted)), " done"),
-      el("span", "", el("b", "", String(r.plannedCounted)), view.includePlanned ? " planned" : " planned, not counted"),
+      el("span", "", el("b", "", String(r.plannedCounted)), user.countPlanned ? " planned" : " planned, not counted"),
       el("span", "", el("b", "", String(r.eligible)), " eligible"),
     ),
   );
@@ -1425,7 +1415,7 @@ function bar(r) {
   const node = el("div", "bar");
   if (r.expected > 0) {
     const donePct = Math.min(100, (r.doneCounted / r.expected) * 100);
-    const plannedPct = view.includePlanned ? Math.min(100 - donePct, (r.plannedCounted / r.expected) * 100) : 0;
+    const plannedPct = user.countPlanned ? Math.min(100 - donePct, (r.plannedCounted / r.expected) * 100) : 0;
     const a = el("span", "confirmed"); a.style.left = "0"; a.style.width = `${donePct}%`;
     const b = el("span", "planned"); b.style.left = `${donePct}%`; b.style.width = `${plannedPct}%`;
     node.append(a, b);

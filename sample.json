@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "users": [
+    {
+      "schemaVersion": 1,
+      "id": 1,
+      "name": "Alex",
+      "countOfficeStar": false,
+      "countPlanned": false,
+      "confirmedThrough": "2026-10-08",
+      "days": {
+        "2026-10-05": "office",
+        "2026-10-06": "office",
+        "2026-10-07": "office",
+        "2026-10-08": "leave"
+      },
+      "notes": {
+        "days": {},
+        "weeks": {
+          "2026-10-04": "Team offsite"
+        },
+        "months": {}
+      }
+    }
+  ]
+}
