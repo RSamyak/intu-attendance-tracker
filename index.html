@@ -1,0 +1,1928 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attendance</title>
+<style>
+:root {
+  --paper: #fffdf6; --ink: #2b2b2b; --grey: #6b6b6b; --faint: #b3ad9e; --line: #e6e2d6; --soft: #f4f1e8;
+  --navy: #17375e; --red: #e2231a; --green-ink: #22773b;
+  --office: #34a853; --officeStar: #93c47d; --leave: #f4cccc; --holiday: #fff2cc; --mixed: #8e7cc3; --mixedStar: #b4a7d6;
+  --office-ink: #137333; --office-star-ink: #2f6b32; --leave-ink: #9a3070; --holiday-ink: #8a6a00; --mixed-ink: #5c4a86; --mixed-star-ink: #6a5a94; --wfh-ink: #c5221f;
+  --wfh: #ea4335; --weekend: #ebe8df; --plain: #ffffff;
+  --cell: 36px; --cell-h: 26px; --stat: 92px; --gutter: 66px; --notes: 260px; --gap: 3px;
+}
+* { box-sizing: border-box; }
+html { scrollbar-gutter: stable; }
+html, body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+h1, h2, h3, p { margin: 0; }
+:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px; }
+
+/* chrome */
+.chrome { position: sticky; top: 0; z-index: 5; background: #fff; }
+header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 9px 16px; border-bottom: 3px solid var(--office); }
+header h1 { font-size: 18px; font-weight: 800; letter-spacing: -.01em; }
+header h1 span { color: var(--grey); font-weight: 600; }
+.actions { margin-left: auto; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.status { color: var(--grey); font-size: 12px; margin-right: 6px; }
+.status b { color: var(--red); font-weight: 700; }
+.status .seal-link { border: 0; background: none; padding: 0; font-weight: 800; color: var(--navy); text-decoration: underline; text-underline-offset: 2px; }
+.btn { padding: 6px 11px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 13px; }
+.btn:hover { background: var(--soft); }
+.btn.primary { background: var(--navy); border-color: var(--navy); color: #fff; font-weight: 700; }
+.btn.primary:hover { background: #1f4a7e; }
+.btn.dirty { border-color: var(--navy); color: var(--navy); font-weight: 800; }
+.btn.danger { color: var(--red); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--grey); }
+.btn.ghost:hover { background: var(--soft); color: var(--ink); }
+select.btn { padding-right: 26px; appearance: none; font-weight: 700;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236b6b6b' stroke-width='1.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center; }
+.tabbar { display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+nav.tabs { display: flex; gap: 2px; padding: 4px 0 0; }
+nav.tabs button { padding: 8px 14px; border: 0; border-bottom: 3px solid transparent; background: none; font-weight: 600; color: var(--grey); }
+nav.tabs button:hover { color: var(--ink); }
+nav.tabs button.on { color: var(--ink); border-bottom-color: var(--navy); }
+
+main { margin: 0 0 48px; }
+.planner { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: start; }
+.board { display: grid; gap: 12px; justify-items: start; justify-self: center; padding: 14px 16px 0; }
+.lens { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 0; }
+.lens button { border: 1px solid var(--line); border-radius: 999px; background: #fff; padding: 4px 10px 4px 8px; font-size: 12px; font-weight: 600; color: var(--grey); display: inline-flex; align-items: center; gap: 6px; }
+.lens button::before { content: ""; width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--faint); }
+.lens button[aria-pressed="true"] { color: var(--ink); border-color: var(--navy); }
+.lens .short { display: none; }
+.lens button[aria-pressed="true"]::before { background: var(--navy); border-color: var(--navy); }
+.foot { display: grid; grid-template-columns: 3fr 2fr; gap: 12px; width: 100%; margin-top: 4px; }
+.foot .card { padding: 8px 12px 10px; }
+.foot .card h2 { font-size: 10px; }
+.card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.card h2 { font-size: 11px; font-weight: 700; color: var(--grey); text-transform: uppercase; letter-spacing: .05em; }
+
+/* sidebar */
+.side { position: sticky; top: var(--chrome-h, 92px); height: calc(100vh - var(--chrome-h, 92px)); overflow-y: auto; display: grid; align-content: start; gap: 2px; padding: 12px 8px 48px; background: #fff; border-right: 1px solid var(--line); scrollbar-width: thin; }
+.side .year { display: grid; gap: 1px; }
+.side .y { border: 0; background: none; padding: 6px 8px; border-radius: 6px; font-size: 12px; font-weight: 800; color: var(--grey); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.side .y::after { content: ""; width: 5px; height: 5px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .15s; opacity: .55; }
+.side .y.open::after { transform: rotate(45deg); }
+.side .y:hover { background: var(--soft); color: var(--ink); }
+.side .y.has { color: var(--navy); }
+.side .m { border: 0; border-radius: 6px; background: none; padding: 4px 8px 4px 18px; font-size: 12px; font-weight: 600; color: var(--grey); text-align: left; position: relative; }
+.side .m:hover { background: var(--soft); color: var(--ink); }
+.side .m.window { color: var(--ink); }
+.side .m.on { background: var(--navy); color: #fff; }
+.side .m.now::before { content: ""; position: absolute; left: 8px; top: 50%; transform: translateY(-50%); width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+
+/* grid */
+.grid { display: grid; gap: var(--gap); width: calc(var(--gutter) + 7 * var(--cell) + var(--stat) + var(--notes) + 9 * var(--gap)); }
+.head, .week { display: grid; grid-template-columns: var(--gutter) repeat(7, var(--cell)) var(--stat) var(--notes); gap: var(--gap); align-items: stretch; }
+.head { color: var(--faint); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; text-align: center; }
+.head .r { text-align: right; padding-right: 6px; }
+.head .l { text-align: left; padding-left: 8px; }
+.wnote { grid-column: 10; width: 100%; min-width: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; padding: 0 8px; font-size: 12px; color: var(--ink); }
+.wnote:hover { border-color: var(--line); background: #fff; }
+.wnote:focus { border-color: var(--navy); background: #fff; outline: 0; }
+.wnote::placeholder { color: transparent; }
+.week:hover .wnote::placeholder, .wnote:focus::placeholder { color: var(--faint); }
+.week.newmonth { margin-top: 12px; }
+.gutter { display: flex; align-items: center; }
+.mbtn { border: 0; background: none; padding: 0 2px; font-weight: 800; font-size: 12px; color: var(--grey); text-align: left; line-height: 1.1; position: relative; }
+.mbtn:hover { color: var(--navy); }
+.mbtn.noted::after { content: ""; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--navy); opacity: .6; margin-left: 4px; vertical-align: middle; }
+.day { position: relative; height: var(--cell-h); border: 1.5px solid transparent; border-radius: 5px; padding: 0; font-size: 11px; font-weight: 600; color: var(--grey); background: var(--plain); }
+.day:hover { border-color: var(--grey); }
+.day.plain { border-color: var(--line); color: var(--faint); }
+.day.open { --stripe: var(--ink); border-width: 2px; border-style: solid; border-color: var(--stripe); color: var(--stripe); font-weight: 800; font-size: 12px; background-color: #fff; background-image: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--stripe) 42%, white) 0 1.5px, #fff 1.5px 5.5px); }
+.day.today { box-shadow: 0 0 0 2px var(--navy); }
+.day.today:not(.open) { border-color: #fff; }
+.day.seal { z-index: 1; }
+.day.seal::before { content: ""; position: absolute; left: 4px; right: 4px; bottom: -5px; height: 3px; border-radius: 2px; background: var(--navy); }
+.day.dark { color: #fff; }
+.day.ink { color: var(--ink); }
+.day.noted::after { content: ""; position: absolute; top: 1px; right: 1px; border-style: solid; border-width: 0 7px 7px 0; border-color: transparent var(--navy) transparent transparent; }
+.day.dark.noted::after { border-right-color: #fff; }
+.day, .stat { transition: opacity .18s ease; }
+.day.out, .stat.out { opacity: .22; }
+.stat { grid-column: 9; border: 1px solid var(--line); border-radius: 6px; background: #fff; text-align: right; padding: 1px 7px; display: flex; flex-direction: column; justify-content: center; line-height: 1.05; font-variant-numeric: tabular-nums; position: relative; }
+.stat:hover { background: var(--soft); }
+.stat b { font-size: 13px; font-weight: 800; color: var(--green-ink); }
+.stat b.short { color: var(--red); }
+.stat b.none { color: var(--faint); }
+.stat span { font-size: 9px; color: var(--grey); white-space: nowrap; }
+.week.selected .stat { border-color: var(--navy); box-shadow: inset 0 0 0 1px var(--navy); }
+
+/* week detail popover */
+.pop.hero { width: 300px; }
+.pop.hero .sub { color: var(--grey); font-size: 12px; margin-top: -4px; }
+.pop.hero .big { font-size: 40px; font-weight: 800; letter-spacing: -.03em; line-height: 1; margin-top: 4px; color: var(--green-ink); }
+.pop.hero .big.short { color: var(--red); }
+.pop.hero .big.none { color: var(--faint); }
+.pop.hero .big small { font-size: 13px; color: var(--grey); font-weight: 600; letter-spacing: 0; margin-left: 6px; }
+.pop.hero .verdict { font-size: 13px; color: var(--grey); }
+.pop.hero .verdict b { color: var(--ink); }
+.pop.hero .verdict .short { color: var(--red); font-weight: 700; }
+.bar { position: relative; height: 6px; border-radius: 3px; background: var(--soft); margin: 4px 0; overflow: hidden; }
+.bar > span { position: absolute; top: 0; bottom: 0; }
+.bar .confirmed { background: var(--office); }
+.bar .planned { background: var(--officeStar); }
+.facts { display: flex; gap: 12px; font-size: 12px; color: var(--grey); }
+.facts b { color: var(--ink); font-weight: 700; }
+input.note { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; background: var(--paper); font-size: 12px; }
+input.note::placeholder { color: var(--faint); }
+
+/* hover tip */
+.tip { position: absolute; z-index: 15; background: var(--ink); color: #fff; font-size: 12px; padding: 6px 9px; border-radius: 6px; max-width: 260px; pointer-events: none; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); }
+.tip .tnote { margin-top: 3px; color: #ffe599; }
+
+.steps { display: grid; grid-template-columns: repeat(13, 1fr); gap: 3px; align-items: end; margin-top: 4px; }
+.steps .col { display: grid; gap: 2px; text-align: center; font-size: 10px; font-variant-numeric: tabular-nums; padding-top: 13px; }
+.steps .pillar { height: var(--h); border-radius: 3px 3px 0 0; background: var(--soft); position: relative; }
+.steps .pillar b { position: absolute; top: -13px; left: 0; right: 0; font-size: 10px; font-weight: 700; color: var(--grey); }
+.steps .e { color: var(--faint); border-top: 1px solid var(--line); padding-top: 1px; }
+.steps .now .pillar { background: var(--navy); }
+.steps .now .pillar b, .steps .now .e { color: var(--navy); font-weight: 800; }
+
+.legend { display: grid; grid-template-columns: repeat(3, auto); justify-content: start; gap: 4px 14px; font-size: 11px; color: var(--grey); margin-top: 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; border: 1px solid rgba(0, 0, 0, .1); flex: none; }
+.sw.open { border: 2px solid var(--office-ink); background-color: #fff; background-image: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--office-ink) 42%, white) 0 1.5px, #fff 1.5px 5.5px); }
+.sw.plain { background: #fff; border-color: var(--line); }
+.sw.seal { background: var(--weekend); border-color: transparent; box-shadow: inset 0 -3px 0 var(--navy); }
+.pop .btn { justify-self: stretch; }
+
+/* popover */
+.pop { position: absolute; z-index: 20; background: #fff; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, .14); padding: 10px; width: 250px; display: grid; gap: 8px; }
+.pop h3 { font-size: 13px; font-weight: 800; }
+.pop h3 small { color: var(--grey); font-weight: 600; margin-left: 6px; }
+.pop .hint { font-size: 11px; color: var(--grey); }
+.pop .nums { display: flex; flex-wrap: wrap; gap: 3px 12px; font-size: 12px; color: var(--grey); }
+.pop .nums b { color: var(--ink); font-weight: 700; }
+.pop .nums .short { color: var(--red); }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { flex: 1; border: 0; border-right: 1px solid var(--line); background: #fff; padding: 6px 4px; font-size: 12px; font-weight: 600; color: var(--grey); display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.seg button:last-child { border-right: 0; }
+.seg button:hover { background: var(--soft); color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--navy); color: #fff; }
+.seg button:disabled { opacity: .4; cursor: default; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.check input { width: 15px; height: 15px; margin: 0; accent-color: var(--leave-ink); }
+.check:has(input:disabled) { color: var(--faint); }
+.seg .sw { width: 10px; height: 10px; }
+
+/* admin */
+.admin { display: grid; gap: 14px; max-width: 720px; margin: 14px auto 0; padding: 0 16px; }
+.admin .card h2 { margin-bottom: 8px; display: flex; justify-content: space-between; align-items: baseline; }
+.admin .card h2 em { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--faint); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rows { display: grid; gap: 8px; }
+.row input[type="date"], .row input[type="number"], .row input[type="text"] { border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; background: #fff; }
+.row input[type="number"] { width: 60px; text-align: center; }
+.row input.name { width: 16em; }
+.hint { font-size: 12px; color: var(--grey); }
+.htable { display: grid; gap: 4px; }
+.hrow { display: grid; grid-template-columns: 34px 150px 1fr auto; gap: 8px; align-items: center; }
+.hrow .dow { color: var(--faint); font-size: 12px; text-align: right; }
+.hrow input { border: 1px solid transparent; border-radius: 6px; padding: 5px 8px; background: transparent; min-width: 0; }
+.hrow input:hover { border-color: var(--line); background: #fff; }
+.hrow input:focus { border-color: var(--navy); background: #fff; outline: 0; }
+.hrow .btn.ghost { visibility: hidden; }
+.btn.x { padding: 2px 9px; font-size: 17px; line-height: 1; }
+.lens[hidden] { display: none; }
+.hrow:hover .btn.ghost, .hrow:focus-within .btn.ghost { visibility: visible; }
+.hrow.add { margin-top: 6px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.hrow.add input { border-color: var(--line); background: #fff; }
+.htable .empty { color: var(--faint); font-size: 13px; padding: 4px 0; }
+details.bulk summary { cursor: pointer; font-size: 12px; color: var(--grey); font-weight: 600; }
+details.bulk .rows { margin-top: 8px; }
+textarea.paste { width: 100%; min-height: 80px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: var(--paper); font: 12px/1.5 ui-monospace, Menlo, monospace; }
+
+/* dialogs, footer, toast */
+dialog { border: 1px solid var(--line); border-radius: 12px; padding: 0; width: min(440px, calc(100% - 32px)); box-shadow: 0 20px 60px rgba(0, 0, 0, .25); background: #fff; color: var(--ink); }
+dialog::backdrop { background: rgba(43, 43, 43, .45); }
+.dbody { padding: 20px 22px; display: grid; gap: 14px; }
+.dbody h2 { font-size: 17px; font-weight: 800; }
+.dbody p { color: var(--grey); }
+.dactions { display: flex; justify-content: flex-end; gap: 8px; }
+footer { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 6px 16px; background: #fff; border-top: 1px solid var(--line); color: var(--grey); font-size: 12px; }
+kbd { font: inherit; padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--soft); color: var(--ink); font-size: 11px; }
+.toast { position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 9px 14px; border-radius: 999px; opacity: 0; transition: opacity .15s; pointer-events: none; z-index: 30; font-size: 13px; }
+.toast.show { opacity: 1; }
+
+@media (max-width: 1000px) {
+  :root { --notes: minmax(120px, 1fr); }
+  .board { justify-self: stretch; }
+  .grid { width: 100%; }
+  .foot { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  :root { --cell-h: 34px; --stat: 56px; --gutter: 40px; }
+  .chrome { top: calc(-1 * var(--header-h, 0px)); }
+  header { padding: 10px 12px; gap: 8px; }
+  header h1 { font-size: 16px; }
+  .actions { margin-left: 0; width: 100%; }
+  .actions .btn { flex: 1; }
+  .status { flex-basis: 100%; margin: 0 0 2px; }
+  .tabbar { padding: 0 12px; gap: 8px; }
+  nav.tabs button { padding: 8px 10px; }
+  .lens { flex-wrap: nowrap; padding: 6px 0; }
+  .lens .full { display: none; }
+  .lens .short { display: inline; }
+  .planner { grid-template-columns: minmax(0, 1fr); }
+  .side { top: calc(var(--chrome-h, 92px) - var(--header-h, 0px)); z-index: 4; height: auto; display: flex; gap: 2px; overflow: auto hidden; padding: 6px 12px; border-right: 0; border-bottom: 1px solid var(--line); scrollbar-width: none; }
+  .side .year { display: contents; }
+  .side .y, .side .m { flex: none; white-space: nowrap; }
+  .side .m { padding: 6px 10px; }
+  .side .m.now::before { left: 3px; }
+  .board { min-width: 0; width: 100%; padding: 12px 12px 0; }
+  .head, .week { grid-template-columns: var(--gutter) repeat(7, minmax(0, 1fr)) var(--stat); }
+  .wnote, .head .l { display: none; }
+  .day { font-size: 12px; }
+  .mbtn { font-size: 11px; }
+  .stat { padding: 1px 4px; }
+  .stat b { font-size: 12px; }
+  .stat span { display: none; }
+  .pop { max-width: calc(100vw - 16px); }
+  .legend { grid-template-columns: repeat(2, auto); }
+  .admin { margin-top: 12px; padding: 0 12px; }
+  .hrow { grid-template-columns: 128px minmax(0, 1fr) auto; gap: 6px; }
+  .hrow .dow { display: none; }
+  .hrow .btn.ghost { visibility: visible; }
+  footer { display: none; }
+  .toast { bottom: 16px; }
+}
+</style>
+</head>
+<body>
+<script type="application/json" id="attendance-static">
+{
+  "schemaVersion": 1,
+  "thresholds": [
+    {
+      "from": "2023-09-01",
+      "daysPerWeek": 2
+    },
+    {
+      "from": "2025-04-13",
+      "daysPerWeek": 3
+    }
+  ],
+  "holidays": [
+    {
+      "date": "2023-10-02",
+      "name": "Gandhi Jayanti"
+    },
+    {
+      "date": "2023-10-24",
+      "name": "Vijayadashami"
+    },
+    {
+      "date": "2023-11-01",
+      "name": "Kannada Rajyotsava"
+    },
+    {
+      "date": "2023-11-14",
+      "name": "Balipadyami, Deepavali"
+    },
+    {
+      "date": "2023-11-22",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2023-12-25",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2023-12-26",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2023-12-27",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2023-12-28",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2023-12-29",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2024-01-01",
+      "name": "New Year"
+    },
+    {
+      "date": "2024-01-26",
+      "name": "Republic Day"
+    },
+    {
+      "date": "2024-03-08",
+      "name": "Maha Shivaratri"
+    },
+    {
+      "date": "2024-03-29",
+      "name": "Good Friday"
+    },
+    {
+      "date": "2024-04-09",
+      "name": "Ugadi"
+    },
+    {
+      "date": "2024-04-11",
+      "name": "Ramzan"
+    },
+    {
+      "date": "2024-05-01",
+      "name": "May Day"
+    },
+    {
+      "date": "2024-06-19",
+      "name": "Juneteenth"
+    },
+    {
+      "date": "2024-08-15",
+      "name": "Independence Day"
+    },
+    {
+      "date": "2024-10-02",
+      "name": "Gandhi Jayanti"
+    },
+    {
+      "date": "2024-11-01",
+      "name": "Kannada Rajyotsava"
+    },
+    {
+      "date": "2024-11-27",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2024-12-25",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2024-12-26",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2024-12-27",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2024-12-30",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2024-12-31",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2025-01-01",
+      "name": "New Year"
+    },
+    {
+      "date": "2025-01-14",
+      "name": "Makara Sankranti"
+    },
+    {
+      "date": "2025-03-13",
+      "name": "Holi"
+    },
+    {
+      "date": "2025-03-31",
+      "name": "Ramzan"
+    },
+    {
+      "date": "2025-04-18",
+      "name": "Good Friday"
+    },
+    {
+      "date": "2025-05-01",
+      "name": "May Day"
+    },
+    {
+      "date": "2025-06-19",
+      "name": "Juneteenth"
+    },
+    {
+      "date": "2025-08-15",
+      "name": "Independence Day"
+    },
+    {
+      "date": "2025-10-01",
+      "name": "Mahanavami, Ayudha Puja"
+    },
+    {
+      "date": "2025-10-02",
+      "name": "Gandhi Jayanti, Vijayadashami"
+    },
+    {
+      "date": "2025-10-22",
+      "name": "Balipadyami, Deepavali"
+    },
+    {
+      "date": "2025-11-26",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2025-12-25",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2025-12-26",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2025-12-29",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2025-12-30",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2025-12-31",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2026-01-01",
+      "name": "New Year"
+    },
+    {
+      "date": "2026-01-26",
+      "name": "Republic Day"
+    },
+    {
+      "date": "2026-03-02",
+      "name": "Holi"
+    },
+    {
+      "date": "2026-03-19",
+      "name": "Ugadi / Gudi Padwa"
+    },
+    {
+      "date": "2026-04-03",
+      "name": "Good Friday"
+    },
+    {
+      "date": "2026-05-01",
+      "name": "May Day & Maharashtra Day"
+    },
+    {
+      "date": "2026-05-28",
+      "name": "Bakrid"
+    },
+    {
+      "date": "2026-06-19",
+      "name": "Juneteenth"
+    },
+    {
+      "date": "2026-09-14",
+      "name": "Ganesha Chaturthi / Varasiddi Vinayaka Vrata, Swarna Gowri Vrata"
+    },
+    {
+      "date": "2026-10-02",
+      "name": "Gandhi Jayanti"
+    },
+    {
+      "date": "2026-11-10",
+      "name": "Balipadyami, Deepavali"
+    },
+    {
+      "date": "2026-11-25",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2026-12-25",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2026-12-28",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2026-12-29",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2026-12-30",
+      "name": "Recharge Day"
+    },
+    {
+      "date": "2026-12-31",
+      "name": "Recharge Day"
+    }
+  ]
+}
+</script>
+<div class="chrome">
+  <header id="top"></header>
+  <div class="tabbar">
+    <nav id="tabs" class="tabs"></nav>
+    <div id="lens" class="lens"></div>
+  </div>
+</div>
+<main id="view"></main>
+<footer>
+  <span><kbd>O</kbd> office · <kbd>S</kbd> office* · <kbd>W</kbd> work from home · <kbd>L</kbd> leave · <kbd>⌫</kbd> unplanned · arrows move</span>
+</footer>
+<div class="toast" id="toast" role="status"></div>
+<script>
+/** Civil dates as YYYY-MM-DD. Weekday uses UTC so a local timezone cannot shift the day. */
+
+const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function isDate(value) {
+  if (typeof value !== "string" || !DATE.test(value)) return false;
+  const [y, m, d] = value.split("-").map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d));
+  return utc.getUTCFullYear() === y && utc.getUTCMonth() === m - 1 && utc.getUTCDate() === d;
+}
+
+function weekday(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+function isWeekend(iso) {
+  const day = weekday(iso);
+  return day === 0 || day === 6;
+}
+
+function addDays(iso, days) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d + days));
+  return format(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate());
+}
+
+function compare(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function weekSunday(iso) {
+  return addDays(iso, -weekday(iso));
+}
+
+function weekSaturday(iso) {
+  return addDays(weekSunday(iso), 6);
+}
+
+function eachDate(start, end) {
+  const dates = [];
+  for (let cursor = start; cursor <= end; cursor = addDays(cursor, 1)) dates.push(cursor);
+  return dates;
+}
+
+function monthEnd(iso) {
+  const [y, m] = iso.split("-").map(Number);
+  const utc = new Date(Date.UTC(y, m, 0));
+  return format(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate());
+}
+
+function monthStart(iso) {
+  return `${iso.slice(0, 7)}-01`;
+}
+
+function format(y, m, d) {
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+
+/**
+ * A day has two independent facts: where the person was, and whether the day was an off day.
+ * Stored as one token: "office", "leave", "office+holiday", "officeStar+leave".
+ * "wfh" is an explicit plan to work from home. Once a day is confirmed, that token is
+ * dropped: an unmarked weekday in the record is work from home, and only the plan
+ * distinguishes "wfh" from an empty day.
+ */
+
+const presenceKinds = ["home", "office", "officeStar"];
+const offKinds = ["none", "leave", "holiday"];
+
+function parseStatus(token) {
+  const state = { presence: "home", off: "none" };
+  if (token == null) return state;
+  if (typeof token !== "string" || token === "") return null;
+  if (token === "wfh") return { presence: "home", off: "none", explicit: true };
+  const parts = token.split("+");
+  if (parts.length > 2) return null;
+  for (const part of parts) {
+    if (presenceKinds.includes(part) && part !== "home" && state.presence === "home") state.presence = part;
+    else if (offKinds.includes(part) && part !== "none" && state.off === "none") state.off = part;
+    else return null;
+  }
+  return state;
+}
+
+function formatStatus({ presence, off, explicit = false }) {
+  const parts = [];
+  if (presence !== "home") parts.push(presence);
+  if (off !== "none") parts.push(off);
+  if (parts.length) return parts.join("+");
+  return explicit ? "wfh" : null;
+}
+
+function isStatus(token) {
+  return parseStatus(token) !== null;
+}
+
+
+class ValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
+/* ---------- shared configuration ---------- */
+
+function parseStatic(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ValidationError("Shared configuration must be an object");
+  if ("users" in raw || "days" in raw || "confirmedThrough" in raw) throw new ValidationError("Shared configuration contains user data");
+  if (raw.schemaVersion !== 1) throw new ValidationError("Unsupported shared configuration schemaVersion");
+  if (!Array.isArray(raw.thresholds) || raw.thresholds.length === 0) throw new ValidationError("At least one threshold is required");
+  const seen = new Set();
+  const thresholds = raw.thresholds.map((entry, index) => {
+    if (!entry || typeof entry !== "object") throw new ValidationError(`Threshold ${index + 1} is invalid`);
+    if (!isDate(entry.from)) throw new ValidationError(`Threshold date ${entry.from} is invalid`);
+    if (seen.has(entry.from)) throw new ValidationError(`Duplicate threshold date ${entry.from}`);
+    seen.add(entry.from);
+    if (!Number.isInteger(entry.daysPerWeek) || entry.daysPerWeek <= 0) throw new ValidationError(`Threshold on ${entry.from} must be a positive whole number`);
+    return { from: entry.from, daysPerWeek: entry.daysPerWeek };
+  }).sort((a, b) => a.from < b.from ? -1 : 1);
+  return { schemaVersion: 1, thresholds, holidays: parseHolidays(raw.holidays) };
+}
+
+function staticDocument(config) {
+  return {
+    schemaVersion: 1,
+    thresholds: config.thresholds.map((entry) => ({ from: entry.from, daysPerWeek: entry.daysPerWeek })),
+    holidays: config.holidays.map((entry) => ({ date: entry.date, name: entry.name })),
+  };
+}
+
+/** Accepts ["2026-01-26"] or [{ date, name }]; returns named holidays sorted by date. */
+function parseHolidays(raw) {
+  if (!Array.isArray(raw)) throw new ValidationError("Holidays must be a list");
+  const seen = new Set();
+  return raw.map((entry) => {
+    const item = typeof entry === "string" ? { date: entry, name: "" } : entry;
+    if (!isPlainObject(item) || !isDate(item.date)) throw new ValidationError(`Holiday ${JSON.stringify(entry)} needs a valid date`);
+    if (item.name !== undefined && typeof item.name !== "string") throw new ValidationError(`Holiday ${item.date} has an invalid name`);
+    if (seen.has(item.date)) throw new ValidationError(`Duplicate holiday ${item.date}`);
+    seen.add(item.date);
+    return { date: item.date, name: (item.name ?? "").trim() };
+  }).sort((a, b) => a.date < b.date ? -1 : 1);
+}
+
+/** Reads a pasted year list: a JSON array, or one "YYYY-MM-DD Name" per line. */
+function parseHolidayList(text) {
+  const trimmed = String(text ?? "").trim();
+  if (!trimmed) throw new ValidationError("The holiday list is empty");
+  if (trimmed.startsWith("[")) return parseHolidays(JSON.parse(trimmed));
+  const entries = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
+    const match = line.match(/^(\d{4}-\d{2}-\d{2})(?:[\s,;:\t|–-]+(.*))?$/);
+    if (!match) throw new ValidationError(`Cannot read holiday line: ${line}`);
+    return { date: match[1], name: match[2] ?? "" };
+  });
+  return parseHolidays(entries);
+}
+
+/** Adds or renames one holiday. */
+function upsertHoliday(config, date, name) {
+  if (!isDate(date)) throw new ValidationError(`Holiday date ${date} is invalid`);
+  const others = config.holidays.filter((entry) => entry.date !== date);
+  return parseStatic(staticDocument({ ...config, holidays: [...others, { date, name: String(name ?? "") }] }));
+}
+
+function removeHoliday(config, date) {
+  if (!config.holidays.some((entry) => entry.date === date)) throw new ValidationError(`No holiday on ${date}`);
+  return parseStatic(staticDocument({ ...config, holidays: config.holidays.filter((entry) => entry.date !== date) }));
+}
+
+/** Replaces one calendar year's holidays; other years are untouched. */
+function replaceHolidayYear(config, year, holidays) {
+  const prefix = `${year}-`;
+  const stray = holidays.find((entry) => !entry.date.startsWith(prefix));
+  if (stray) throw new ValidationError(`${stray.date} is outside ${year}`);
+  const kept = config.holidays.filter((entry) => !entry.date.startsWith(prefix));
+  return parseStatic(staticDocument({ ...config, holidays: [...kept, ...holidays] }));
+}
+
+/* ---------- user document ---------- */
+
+const USER_FIELDS = ["schemaVersion", "id", "name", "countOfficeStar", "confirmedThrough", "days", "notes"];
+const NOTE_KEYS = {
+  days: (key) => isDate(key),
+  weeks: (key) => isDate(key) && weekday(key) === 0,
+  months: (key) => /^\d{4}-(0[1-9]|1[0-2])$/.test(key),
+};
+
+function parseUser(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ValidationError("User document must be an object");
+  if ("thresholds" in raw || "holidays" in raw) throw new ValidationError("User document contains shared configuration");
+  if (raw.schemaVersion !== 1) throw new ValidationError("Unsupported user schemaVersion");
+  if (!Number.isInteger(raw.id) || raw.id < 1) throw new ValidationError("User id must be a positive integer");
+  if (typeof raw.name !== "string") throw new ValidationError("Name must be text");
+  if (typeof raw.countOfficeStar !== "boolean") throw new ValidationError("countOfficeStar must be true or false");
+  if (raw.confirmedThrough !== null && !isDate(raw.confirmedThrough)) throw new ValidationError("confirmedThrough must be a date or null");
+  if (!isPlainObject(raw.days)) throw new ValidationError("days must be an object");
+  const days = {};
+  for (const [iso, token] of Object.entries(raw.days)) {
+    if (!isDate(iso)) throw new ValidationError(`Day ${iso} is not a valid date`);
+    const state = parseStatus(token);
+    if (state === null) throw new ValidationError(`Unknown status ${token} on ${iso}`);
+    const canonical = formatStatus(state);
+    if (canonical) days[iso] = canonical;
+  }
+  const preserved = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!USER_FIELDS.includes(key)) preserved[key] = value;
+  }
+  return {
+    ...preserved,
+    schemaVersion: 1,
+    id: raw.id,
+    name: raw.name.trim(),
+    countOfficeStar: raw.countOfficeStar,
+    confirmedThrough: raw.confirmedThrough,
+    days,
+    notes: parseNotes(raw.notes),
+  };
+}
+
+function parseNotes(raw) {
+  const notes = emptyNotes();
+  if (raw === undefined) return notes;
+  if (!isPlainObject(raw)) throw new ValidationError("notes must be an object");
+  for (const scope of Object.keys(raw)) {
+    if (!(scope in NOTE_KEYS)) throw new ValidationError(`Unknown note scope ${scope}`);
+    if (!isPlainObject(raw[scope])) throw new ValidationError(`notes.${scope} must be an object`);
+    for (const [key, text] of Object.entries(raw[scope])) {
+      if (!NOTE_KEYS[scope](key)) throw new ValidationError(`Note key ${key} is not valid for ${scope}`);
+      if (typeof text !== "string") throw new ValidationError(`Note on ${key} must be text`);
+      if (text.trim()) notes[scope][key] = text.trim();
+    }
+  }
+  return notes;
+}
+
+function emptyNotes() {
+  return { days: {}, weeks: {}, months: {} };
+}
+
+function userDocument(user) {
+  const preserved = {};
+  for (const [key, value] of Object.entries(user)) {
+    if (!USER_FIELDS.includes(key)) preserved[key] = value;
+  }
+  return {
+    ...preserved,
+    schemaVersion: 1,
+    id: user.id,
+    name: user.name,
+    countOfficeStar: user.countOfficeStar,
+    confirmedThrough: user.confirmedThrough,
+    days: sorted(user.days),
+    notes: { days: sorted(user.notes.days), weeks: sorted(user.notes.weeks), months: sorted(user.notes.months) },
+  };
+}
+
+function createUser(id, name = "") {
+  return parseUser({ schemaVersion: 1, id, name, countOfficeStar: false, confirmedThrough: null, days: {}, notes: emptyNotes() });
+}
+
+function usersDocument(list) {
+  return { schemaVersion: 1, users: list.map(userDocument) };
+}
+
+function parseUsers(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ValidationError("Attendance file must be an object");
+  if (raw.schemaVersion !== 1) throw new ValidationError("Unsupported attendance file schemaVersion");
+  if (!Array.isArray(raw.users) || raw.users.length === 0) throw new ValidationError("Attendance file needs at least one user");
+  const seen = new Set();
+  return raw.users.map((entry) => {
+    const parsed = parseUser(entry);
+    if (seen.has(parsed.id)) throw new ValidationError(`Duplicate user ${parsed.id}`);
+    seen.add(parsed.id);
+    return parsed;
+  });
+}
+
+/* ---------- edits ---------- */
+
+function setDay(user, iso, token) {
+  if (!isDate(iso)) throw new ValidationError(`Day ${iso} is not a valid date`);
+  const state = parseStatus(token);
+  if (state === null) throw new ValidationError(`Unknown status ${token}`);
+  const days = { ...user.days };
+  const canonical = formatStatus(state);
+  if (canonical === null) delete days[iso];
+  else days[iso] = canonical;
+  return { ...user, days };
+}
+
+function setNote(user, scope, key, text) {
+  if (!(scope in NOTE_KEYS)) throw new ValidationError(`Unknown note scope ${scope}`);
+  if (!NOTE_KEYS[scope](key)) throw new ValidationError(`Note key ${key} is not valid for ${scope}`);
+  if (typeof text !== "string") throw new ValidationError("A note must be text");
+  const map = { ...user.notes[scope] };
+  if (text.trim()) map[key] = text.trim();
+  else delete map[key];
+  return { ...user, notes: { ...user.notes, [scope]: map } };
+}
+
+function confirmThrough(user, iso, today) {
+  if (!isDate(iso) || !isDate(today)) throw new ValidationError("Confirmation requires valid dates");
+  if (iso > today) throw new ValidationError("A future date cannot be confirmed");
+  if (user.confirmedThrough && iso <= user.confirmedThrough) throw new ValidationError("Confirmation must move forward");
+  const days = { ...user.days };
+  for (const date of Object.keys(days)) {
+    if (date <= iso && days[date] === "wfh") delete days[date];
+  }
+  return { ...user, confirmedThrough: iso, days };
+}
+
+function reopenThrough(user, iso) {
+  if (iso !== null && !isDate(iso)) throw new ValidationError("Reopen requires a date or null");
+  if (!user.confirmedThrough) throw new ValidationError("Nothing is confirmed");
+  if (iso !== null && iso >= user.confirmedThrough) throw new ValidationError("Reopen must move backward");
+  return { ...user, confirmedThrough: iso };
+}
+
+function unconfirmedPastDates(user, today) {
+  if (!user.confirmedThrough) return null;
+  const start = addDays(user.confirmedThrough, 1);
+  const yesterday = addDays(today, -1);
+  if (start > yesterday) return [];
+  return eachDate(start, yesterday);
+}
+
+/* ---------- helpers ---------- */
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function sorted(map) {
+  return Object.fromEntries(Object.entries(map).sort(([a], [b]) => a < b ? -1 : 1));
+}
+
+
+function thresholdFor(staticConfig, iso) {
+  let current = null;
+  for (const entry of staticConfig.thresholds) {
+    if (entry.from <= iso) current = entry.daysPerWeek;
+  }
+  if (current == null) throw new Error(`No threshold is in force on ${iso}`);
+  return current;
+}
+
+function dayFacts(staticConfig, user, iso) {
+  const token = user.days[iso] ?? null;
+  const { presence, off } = parseStatus(token);
+  const weekend = isWeekend(iso);
+  const shared = staticConfig.holidays.find((entry) => entry.date === iso) ?? null;
+  const holiday = shared !== null || off === "holiday";
+  const onLeave = off === "leave";
+  const confirmed = Boolean(user.confirmedThrough) && compare(iso, user.confirmedThrough) <= 0;
+  const counted = presence === "office" || (presence === "officeStar" && user.countOfficeStar);
+  return {
+    date: iso,
+    status: token,
+    presence,
+    off,
+    weekend,
+    holiday,
+    holidayName: shared ? shared.name : null,
+    onLeave,
+    eligible: !weekend && !holiday && !onLeave,
+    counted,
+    confirmed,
+  };
+}
+
+/**
+ * Current method: the Sunday–Saturday week that contains `iso` plus the three weeks before it.
+ * `view.today` splits counted days into done (on or before today) and planned (after today);
+ * `view.includePlanned` adds planned days to the count (the sheet's "Planned" switch); the default counts done days only.
+ */
+function rolling(staticConfig, user, iso, view = {}) {
+  const end = weekSaturday(iso);
+  const start = weekSunday(addDays(end, -21));
+  return summarize(staticConfig, user, start, end, "rolling", view);
+}
+
+/** Legacy method: the calendar month that contains `iso`. */
+function month(staticConfig, user, iso, view = {}) {
+  return summarize(staticConfig, user, monthStart(iso), monthEnd(iso), "month", view);
+}
+
+function expectedFor(eligible, daysPerWeek, formula) {
+  return formula === "month"
+    ? ceilDiv(eligible * daysPerWeek, 5)
+    : roundDivHalfAway(eligible * daysPerWeek, 5);
+}
+
+function summarize(staticConfig, user, start, end, formula, view) {
+  const facts = eachDate(start, end).map((iso) => dayFacts(staticConfig, user, iso));
+  const eligible = facts.filter((day) => day.eligible).length;
+  const isDone = (day) => view.today == null || day.date <= view.today;
+  const confirmedCounted = facts.filter((day) => day.counted && day.confirmed).length;
+  const doneCounted = facts.filter((day) => day.counted && isDone(day)).length;
+  const plannedCounted = facts.filter((day) => day.counted && !isDone(day)).length;
+  const counted = view.includePlanned ? doneCounted + plannedCounted : doneCounted;
+  const daysPerWeek = thresholdFor(staticConfig, end);
+  const expected = expectedFor(eligible, daysPerWeek, formula);
+  const needed = Math.max(0, expected - counted);
+  return {
+    formula,
+    start,
+    end,
+    daysPerWeek,
+    eligible,
+    counted,
+    confirmedCounted,
+    doneCounted,
+    plannedCounted,
+    expected,
+    needed,
+    perWeek: expected === 0 ? null : roundDivHalfAway(daysPerWeek * counted * 10, expected) / 10,
+  };
+}
+
+function roundDivHalfAway(numerator, denominator) {
+  const negative = numerator < 0;
+  const n = Math.abs(numerator);
+  const q = Math.floor(n / denominator);
+  const remainder = n % denominator;
+  const rounded = remainder * 2 >= denominator ? q + 1 : q;
+  return negative ? -rounded : rounded;
+}
+
+function ceilDiv(numerator, denominator) {
+  return Math.floor((numerator + denominator - 1) / denominator);
+}
+
+
+function createStore(storage) {
+  return {
+    loadStatic(embedded) {
+      const saved = storage.getItem(staticKey());
+      if (!saved) return { config: parseStatic(embedded), source: "default" };
+      return { config: parseStatic(JSON.parse(saved)), source: "override" };
+    },
+    saveStatic(config) {
+      storage.setItem(staticKey(), JSON.stringify(staticDocument(config)));
+    },
+    resetStatic() {
+      storage.removeItem(staticKey());
+    },
+    loadUsers() {
+      const saved = storage.getItem(usersKey());
+      return saved ? parseUsers(JSON.parse(saved)) : [];
+    },
+    saveUsers(list) {
+      storage.setItem(usersKey(), JSON.stringify(usersDocument(list)));
+    },
+    openId() {
+      const id = Number(storage.getItem(openKey()));
+      return Number.isInteger(id) ? id : null;
+    },
+    setOpenId(id) {
+      storage.setItem(openKey(), String(id));
+    },
+    loadView(defaults) {
+      try { return { ...defaults, ...JSON.parse(storage.getItem(viewKey()) ?? "{}") }; }
+      catch { return { ...defaults }; }
+    },
+    saveView(view) {
+      storage.setItem(viewKey(), JSON.stringify(view));
+    },
+  };
+}
+
+function importStatic(_current, text) {
+  return parseStatic(JSON.parse(text));
+}
+
+function staticKey() {
+  return "attendance:static";
+}
+
+function usersKey() {
+  return "attendance:users";
+}
+
+function openKey() {
+  return "attendance:openUser";
+}
+
+function viewKey() {
+  return "attendance:view";
+}
+
+
+const PRESENCE = { home: "Home", office: "Office", officeStar: "Office*" };
+const OFF = { none: "Working", leave: "Leave", holiday: "Holiday" };
+const KEYS = { o: ["presence", "office"], s: ["presence", "officeStar"], w: ["presence", "wfh"], l: ["off", "leave"] };
+const COLOR = { office: "var(--office)", officeStar: "var(--officeStar)", leave: "var(--leave)", holiday: "var(--holiday)", mixed: "var(--mixed)", mixedStar: "var(--mixedStar)" };
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const store = createStore(window.localStorage);
+const embedded = parseStatic(JSON.parse(document.getElementById("attendance-static").textContent));
+const today = todayISO();
+
+let shared = store.loadStatic(embedded);
+let users = [];
+let user;
+let view = store.loadView({ includePlanned: false });
+let exported = "";
+let tab = "plan";
+let focusMonth = today.slice(0, 7);
+let selected = weekSaturday(today);
+let adminYear = Number(today.slice(0, 4));
+const openYears = new Set([today.slice(0, 4)]);
+let spotlight = null; // {start, end} of the rolling window shown while a week popover is open
+let centred = null; // the month the sidebar last scrolled into view
+
+/** Rolling and monthly results for the planner: today splits done from planned. */
+function lens() {
+  return { ...view, today };
+}
+
+const $chrome = document.querySelector(".chrome");
+const $top = document.getElementById("top");
+const $tabs = document.getElementById("tabs");
+const $lens = document.getElementById("lens");
+const $view = document.getElementById("view");
+const $toast = document.getElementById("toast");
+
+openRecords();
+exported = snapshotUsers();
+
+new ResizeObserver(() => {
+  document.documentElement.style.setProperty("--chrome-h", `${$chrome.offsetHeight}px`);
+  document.documentElement.style.setProperty("--header-h", `${$top.offsetHeight}px`);
+}).observe($chrome);
+matchMedia("(max-width: 760px)").addEventListener("change", () => { centred = null; placeSide(); });
+document.addEventListener("keydown", onKey);
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".pop, .day, .mbtn, .stat")) closePopover();
+});
+render();
+
+/* ---------- shell ---------- */
+
+function render() {
+  renderTop();
+  $tabs.replaceChildren(
+    button("Planner", tab === "plan" ? "on" : "", () => { tab = "plan"; render(); }),
+    button("Admin", tab === "admin" ? "on" : "", () => { tab = "admin"; render(); }),
+  );
+  $lens.hidden = tab !== "plan";
+  $lens.replaceChildren(
+    toggle("Count Office*", "Office*", user.countOfficeStar, (on) => { user = { ...user, countOfficeStar: on }; persist(); }),
+    toggle("Count planned", "Planned", view.includePlanned, (on) => { view = { ...view, includePlanned: on }; store.saveView(view); render(); }),
+  );
+  const old = $view.querySelector(".side");
+  const previous = old && { left: old.scrollLeft, top: old.scrollTop };
+  $view.replaceChildren(tab === "plan" ? planner() : admin());
+  placeSide(previous);
+}
+
+/** Keeps the sidebar where the user left it, and brings a newly chosen month into view. */
+function placeSide(previous) {
+  const side = $view.querySelector(".side");
+  if (!side) return;
+  const on = side.querySelector(".m.on");
+  if (on && centred !== focusMonth) {
+    centred = focusMonth;
+    side.scrollLeft = on.offsetLeft - (side.clientWidth - on.offsetWidth) / 2;
+    side.scrollTop = on.offsetTop - (side.clientHeight - on.offsetHeight) / 2;
+  } else if (previous) {
+    side.scrollLeft = previous.left;
+    side.scrollTop = previous.top;
+  }
+}
+
+function renderTop() {
+  const picker = el("select", "btn", ...users.map((entry) => option(String(entry.id), entry.id === user.id, labelFor(entry))));
+  picker.setAttribute("aria-label", "User");
+  picker.addEventListener("change", () => switchUser(Number(picker.value)));
+  const past = unconfirmedPastDates(user, today);
+  const status = el("span", "status");
+  if (past === null) status.textContent = "Nothing confirmed yet";
+  else {
+    const jump = button(pretty(user.confirmedThrough), "seal-link", () => showConfirmed());
+    jump.title = `Show ${pretty(user.confirmedThrough)}, the last confirmed day`;
+    status.append("Confirmed through ", jump);
+    if (past.length > 0) status.append(" · ", el("b", "", `${past.length} day${past.length === 1 ? "" : "s"} to confirm`));
+  }
+  const dirty = snapshotUsers() !== exported;
+  $top.replaceChildren(
+    el("h1", "", "Attendance"),
+    picker,
+    el("div", "actions",
+      status,
+      button("Save", `btn${dirty ? " dirty" : ""}`, saveUsersFile),
+      button("Load", "btn", () => pickJson(loadUsersFile)),
+      button("Today", "btn", () => { tab = "plan"; focusMonth = today.slice(0, 7); selected = weekSaturday(today); render(); }),
+      button("Confirm", "btn primary", confirmFlow),
+    ),
+  );
+}
+
+/* ---------- planner ---------- */
+
+function planner() {
+  const r = rolling(shared.config, user, selected, lens());
+  return el("div", "planner",
+    sidebar(),
+    el("div", "board",
+      grid(),
+      el("div", "foot", stepsCard(r), legendCard()),
+    ),
+  );
+}
+
+function timeline() {
+  const firstDay = [shared.config.thresholds[0].from, ...Object.keys(user.days)].sort()[0];
+  const first = firstDay.slice(0, 7);
+  const last = `${Number(today.slice(0, 4)) + 1}-12`;
+  return { first, last };
+}
+
+function sidebar() {
+  const { first, last } = timeline();
+  const windowMonths = new Set([addMonths(focusMonth, -1), focusMonth, addMonths(focusMonth, 1)]);
+  const nav = el("nav", "side");
+  nav.setAttribute("aria-label", "Months");
+  for (let year = Number(first.slice(0, 4)); year <= Number(last.slice(0, 4)); year += 1) {
+    const key = String(year);
+    const open = openYears.has(key);
+    const head = button(key, `y${open ? " open" : ""}${key === today.slice(0, 4) ? " now" : ""}${focusMonth.startsWith(key) ? " has" : ""}`, () => {
+      if (open) openYears.delete(key); else openYears.add(key);
+      render();
+    });
+    head.setAttribute("aria-expanded", String(open));
+    const block = el("div", "year", head);
+    if (open) {
+      for (let m = 1; m <= 12; m += 1) {
+        const ym = `${key}-${String(m).padStart(2, "0")}`;
+        if (ym < first || ym > last) continue;
+        const classes = ["m"];
+        if (ym === focusMonth) classes.push("on");
+        else if (windowMonths.has(ym)) classes.push("window");
+        if (ym === today.slice(0, 7)) classes.push("now");
+        const node = button(MONTHS[m - 1].slice(0, 3), classes.join(" "), () => selectMonth(ym));
+        node.setAttribute("aria-label", `${MONTHS[m - 1]} ${year}`);
+        node.setAttribute("aria-pressed", String(ym === focusMonth));
+        block.append(node);
+      }
+    }
+    nav.append(block);
+  }
+  return nav;
+}
+
+function selectMonth(ym) {
+  focusMonth = ym;
+  openYears.add(ym.slice(0, 4));
+  const start = weekSunday(monthStart(`${addMonths(ym, -1)}-01`));
+  const end = weekSaturday(monthEnd(`${addMonths(ym, 1)}-01`));
+  if (today >= start && today <= end) selected = weekSaturday(today);
+  else selected = weekSaturday(`${ym}-01`);
+  render();
+}
+
+function grid() {
+  const start = weekSunday(monthStart(`${addMonths(focusMonth, -1)}-01`));
+  const end = weekSaturday(monthEnd(`${addMonths(focusMonth, 1)}-01`));
+  const rows = [el("div", "head", el("span", ""), ...DAYS.map((name) => el("span", "", name)), el("span", "r", "4 wk"), el("span", "l", "Notes"))];
+  for (let sunday = start; sunday <= end; sunday = addDays(sunday, 7)) {
+    const saturday = addDays(sunday, 6);
+    const dates = eachDate(sunday, saturday);
+    const split = dates.findIndex((iso) => iso.endsWith("-01"));
+    if (split > 0) {
+      // Render-only: the week that crosses a month boundary is drawn as two partial rows.
+      rows.push(weekRow(dates.slice(0, split), 0, saturday, sunday === start ? sunday.slice(0, 7) : null, false));
+      rows.push(weekRow(dates.slice(split), split, saturday, dates[split].slice(0, 7), true));
+    } else {
+      const label = split === 0 ? sunday.slice(0, 7) : sunday === start ? sunday.slice(0, 7) : null;
+      rows.push(weekRow(dates, 0, saturday, label, split === 0 && sunday !== start));
+    }
+  }
+  return el("section", "grid", ...rows);
+}
+
+function weekRow(dates, offset, saturday, labelMonth, newMonth) {
+  const hasSaturday = dates.at(-1) === saturday;
+  const row = el("section", `week${hasSaturday && saturday === selected ? " selected" : ""}${newMonth ? " newmonth" : ""}`);
+  row.append(el("div", "gutter", labelMonth ? monthButton(labelMonth) : ""));
+  dates.forEach((iso, index) => {
+    const cell = dayCell(iso);
+    if (index === 0) cell.style.gridColumnStart = String(offset + 2);
+    row.append(cell);
+  });
+  if (hasSaturday) row.append(statCell(saturday), weekNote(weekSunday(saturday)));
+  return row;
+}
+
+function weekNote(sunday) {
+  const input = el("input", "wnote");
+  input.type = "text";
+  input.value = user.notes.weeks[sunday] ?? "";
+  input.placeholder = "Note";
+  input.setAttribute("aria-label", `Note for the week of ${pretty(sunday)}`);
+  input.addEventListener("input", () => { remember(setNote(user, "weeks", sunday, input.value)); });
+  input.addEventListener("focus", () => { selected = weekSaturday(sunday); });
+  return input;
+}
+
+function monthButton(ym) {
+  const node = button(`${MONTHS[Number(ym.slice(5, 7)) - 1].slice(0, 3)} ${ym.slice(0, 4)}`, `mbtn${user.notes.months[ym] ? " noted" : ""}`, () => openMonthPopover(ym));
+  node.dataset.month = ym;
+  node.title = `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)} · old monthly method and month note`;
+  return node;
+}
+
+function dayCell(iso) {
+  const facts = dayFacts(shared.config, user, iso);
+  const note = user.notes.days[iso];
+  const ordinary = facts.presence === "home" && facts.off === "none" && !facts.holiday;
+  const open = !facts.confirmed && hasPlan(facts);
+  const confirmedWfh = facts.confirmed && ordinary && !facts.weekend;
+  const classes = ["day"];
+  if (open) classes.push("open");
+  else if (ordinary && !facts.weekend && !facts.confirmed) classes.push("plain");
+  if (iso === today) classes.push("today");
+  if (user.confirmedThrough && iso === user.confirmedThrough) classes.push("seal");
+  if (!open && (facts.presence === "office" || confirmedWfh)) classes.push("dark");
+  else if (!open && !ordinary) classes.push("ink");
+  if (note) classes.push("noted");
+  if (spotlight && (iso < spotlight.start || iso > spotlight.end)) classes.push("out");
+  const cell = el("button", classes.join(" "), String(Number(iso.slice(8))));
+  cell.type = "button";
+  cell.dataset.date = iso;
+  if (open) cell.style.setProperty("--stripe", planInk(facts));
+  else cell.style.background = paint(facts);
+  const seal = iso === user.confirmedThrough ? " · confirmed through" : facts.confirmed ? " · confirmed" : "";
+  const label = `${DAYS[weekday(iso)]} ${pretty(iso)} · ${describe(facts)}${seal}`;
+  cell.setAttribute("aria-label", note ? `${label}. ${note}` : label);
+  cell.addEventListener("click", () => { hideTip(); selected = weekSaturday(iso); render(); focusDay(iso); openDayPopover(iso); });
+  cell.addEventListener("mouseenter", () => showTip(cell, label, note));
+  cell.addEventListener("mouseleave", hideTip);
+  return cell;
+}
+
+let tipNode = null;
+function showTip(anchor, label, note) {
+  if (document.querySelector(".pop")) return;
+  hideTip();
+  tipNode = el("div", "tip", el("div", "", label), note ? el("div", "tnote", note) : "");
+  document.body.append(tipNode);
+  const box = anchor.getBoundingClientRect();
+  tipNode.style.left = `${Math.max(8, Math.min(window.scrollX + box.left, window.scrollX + window.innerWidth - tipNode.offsetWidth - 12))}px`;
+  tipNode.style.top = `${window.scrollY + box.bottom + 4}px`;
+}
+
+function hideTip() {
+  tipNode?.remove();
+  tipNode = null;
+}
+
+function hasPlan(facts) {
+  return facts.status === "wfh" || facts.presence !== "home" || facts.off !== "none";
+}
+
+function planInk(facts) {
+  if (facts.presence !== "home" && (facts.off !== "none" || facts.holiday)) {
+    return facts.presence === "office" ? "var(--mixed-ink)" : "var(--mixed-star-ink)";
+  }
+  if (facts.presence === "office") return "var(--office-ink)";
+  if (facts.presence === "officeStar") return "var(--office-star-ink)";
+  if (facts.off === "leave") return "var(--leave-ink)";
+  if (facts.off === "holiday") return "var(--holiday-ink)";
+  return "var(--wfh-ink)";
+}
+
+function paint(facts) {
+  const presence = COLOR[facts.presence];
+  const off = facts.off !== "none" ? COLOR[facts.off] : facts.holiday ? COLOR.holiday : null;
+  if (presence && off) return facts.presence === "office" ? COLOR.mixed : COLOR.mixedStar;
+  if (presence) return presence;
+  if (off) return off;
+  if (facts.weekend && facts.status !== "wfh") return "var(--weekend)";
+  if (facts.status === "wfh" || (facts.confirmed && !facts.weekend)) return "var(--wfh)";
+  return "var(--plain)";
+}
+
+function describe(facts) {
+  if (facts.presence === "home" && facts.off === "none") {
+    if (facts.holiday) return facts.holidayName ? `Holiday · ${facts.holidayName}` : "Holiday";
+    if (facts.weekend) return "Weekend";
+    if (facts.confirmed) return "Work from home";
+    if (facts.status === "wfh") return "Planned work from home";
+    return "Unplanned";
+  }
+  const base = facts.presence === "home"
+    ? OFF[facts.off]
+    : facts.off === "none"
+      ? (facts.holidayName ? `${PRESENCE[facts.presence]} on ${facts.holidayName}` : PRESENCE[facts.presence])
+      : `${PRESENCE[facts.presence]} + ${OFF[facts.off].toLowerCase()}`;
+  return facts.confirmed ? base : `${base}, planned`;
+}
+
+function statCell(saturday) {
+  const r = rolling(shared.config, user, saturday, lens());
+  const cell = el("button", `stat${spotlight && saturday !== selected ? " out" : ""}`);
+  cell.type = "button";
+  const big = el("b", r.expected === 0 ? "none" : r.needed > 0 ? "short" : "", r.perWeek == null ? "—" : r.perWeek.toFixed(1));
+  cell.append(big, el("span", "", `${r.counted}/${r.expected}${r.needed > 0 ? ` · short ${r.needed}` : ""}`));
+  cell.setAttribute("aria-label", `Four weeks ending ${pretty(saturday)}: ${r.counted} of ${r.expected} office days, ${r.eligible} eligible`);
+  cell.addEventListener("click", () => { selected = saturday; render(); openWeekPopover(saturday); });
+  return cell;
+}
+
+function openWeekPopover(saturday) {
+  const pop = popover(() => document.querySelector(".week.selected .stat"));
+  if (!pop) return;
+  const r = rolling(shared.config, user, saturday, lens());
+  const sunday = weekSunday(saturday);
+  // The spotlight lives exactly as long as this popover: set here, cleared in closePopover().
+  spotlight = { start: r.start, end: r.end };
+  render();
+  pop.classList.add("hero");
+  pop.append(
+    el("h3", "", `Week of ${pretty(sunday)} – ${pretty(saturday)}`),
+    el("div", "sub", `Rolling 4 weeks · ${pretty(r.start)} – ${pretty(r.end)} · ${r.daysPerWeek} days a week`),
+    el("div", `big${r.expected === 0 ? " none" : r.needed > 0 ? " short" : ""}`, r.perWeek == null ? "—" : r.perWeek.toFixed(1), el("small", "", "days a week")),
+    bar(r),
+    el("div", "verdict", el("b", "", String(r.counted)), ` of ${r.expected} office days`,
+      r.needed > 0 ? el("span", "short", ` · ${r.needed} more by ${pretty(r.end)}`) : r.expected === 0 ? " · nothing expected" : " · on track"),
+    el("div", "facts",
+      el("span", "", el("b", "", String(r.doneCounted)), " done"),
+      el("span", "", el("b", "", String(r.plannedCounted)), view.includePlanned ? " planned" : " planned, not counted"),
+      el("span", "", el("b", "", String(r.eligible)), " eligible"),
+    ),
+  );
+}
+
+function toggle(label, short, on, action) {
+  const node = el("button", "", el("span", "full", label), el("span", "short", short));
+  node.type = "button";
+  node.title = label;
+  node.addEventListener("click", () => action(!on));
+  node.setAttribute("aria-pressed", String(on));
+  return node;
+}
+
+function stepsCard(r) {
+  const from = 8;
+  const to = 20;
+  const max = expectedFor(to, r.daysPerWeek, "rolling");
+  const chart = el("div", "steps");
+  for (let eligible = from; eligible <= to; eligible += 1) {
+    const expected = expectedFor(eligible, r.daysPerWeek, "rolling");
+    const pillar = el("div", "pillar", el("b", "", String(expected)));
+    pillar.style.setProperty("--h", `${6 + Math.round((expected / max) * 22)}px`);
+    chart.append(el("div", `col${eligible === r.eligible ? " now" : ""}`, pillar, el("span", "e", String(eligible))));
+  }
+  return el("section", "card steps-card",
+    el("h2", "", `Eligible → expected · ${r.daysPerWeek} days a week`),
+    chart,
+  );
+}
+
+function legendCard() {
+  return el("section", "card legend-card", el("h2", "", "Legend"), el("div", "legend",
+    el("span", "", swatch(COLOR.office), "Office"),
+    el("span", "", swatch(COLOR.officeStar), "Office*"),
+    el("span", "", swatch(COLOR.leave), "Leave"),
+    el("span", "", swatch(COLOR.holiday), "Holiday"),
+    el("span", "", swatch("var(--wfh)"), "Work from home"),
+    el("span", "", swatch("var(--weekend)"), "Weekend"),
+    el("span", "", swatch(COLOR.mixed), "Office, off day"),
+    el("span", "", swatch(COLOR.mixedStar), "Office*, off day"),
+    el("span", "", el("i", "sw open"), "Planned"),
+    el("span", "", el("i", "sw plain"), "Unplanned"),
+    el("span", "", el("i", "sw seal"), "Confirmed through"),
+  ));
+}
+
+function swatch(background) {
+  const node = el("i", "sw");
+  node.style.background = background;
+  return node;
+}
+
+function bar(r) {
+  const node = el("div", "bar");
+  if (r.expected > 0) {
+    const donePct = Math.min(100, (r.doneCounted / r.expected) * 100);
+    const plannedPct = view.includePlanned ? Math.min(100 - donePct, (r.plannedCounted / r.expected) * 100) : 0;
+    const a = el("span", "confirmed"); a.style.left = "0"; a.style.width = `${donePct}%`;
+    const b = el("span", "planned"); b.style.left = `${donePct}%`; b.style.width = `${plannedPct}%`;
+    node.append(a, b);
+  }
+  return node;
+}
+
+function noteInput(scope, key, placeholder) {
+  const input = el("input", "note");
+  input.type = "text";
+  input.placeholder = placeholder;
+  input.value = user.notes[scope][key] ?? "";
+  input.setAttribute("aria-label", placeholder);
+  input.addEventListener("input", () => {
+    remember(setNote(user, scope, key, input.value));
+    const pop = input.closest(".pop");
+    if (pop) pop.dataset.dirty = "1";
+  });
+  return input;
+}
+
+/* ---------- popovers ---------- */
+
+function openDayPopover(iso) {
+  const facts = dayFacts(shared.config, user, iso);
+  const pop = popover(() => document.querySelector(`[data-date="${iso}"]`));
+  if (!pop) return;
+  pop.append(el("h3", "", `${DAYS[weekday(iso)]} ${pretty(iso)}`, el("small", "", describe(facts))));
+  if (iso === user.confirmedThrough) pop.append(el("div", "hint", "The record ends on this day."));
+  else if (!facts.confirmed && !facts.weekend && !facts.holiday) pop.append(el("div", "hint", "Blank is undecided. Stripes are a plan."));
+  if (facts.off === "holiday") pop.append(el("div", "hint", "Marked as a holiday in the imported record."));
+  pop.append(
+    presenceSegment(iso, facts),
+    leaveCheck(iso, facts),
+    noteInput("days", iso, "Day note"),
+  );
+  if (!facts.confirmed && iso <= today) pop.append(button(`Confirm through ${pretty(iso)}`, "btn", () => confirmDay(iso)));
+}
+
+function openMonthPopover(ym) {
+  const pop = popover(() => document.querySelector(`[data-month="${ym}"]`));
+  if (!pop) return;
+  const m = month(shared.config, user, `${ym}-01`, lens());
+  pop.append(
+    el("h3", "", `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`, el("small", "", "old monthly method")),
+    el("div", "nums",
+      el("span", "", el("b", "", String(m.eligible)), " eligible"),
+      el("span", "", el("b", "", String(m.expected)), " expected"),
+      el("span", "", el("b", "", String(m.counted)), " office"),
+      el("span", "", el("b", m.needed > 0 ? "short" : "", m.perWeek == null ? "—" : m.perWeek.toFixed(1)), " / wk"),
+      m.needed > 0 ? el("span", "short", `short ${m.needed}`) : "",
+    ),
+    el("div", "hint", `Calendar month · ceiling(eligible × ${m.daysPerWeek} ÷ 5)`),
+    noteInput("months", ym, "Month note"),
+  );
+}
+
+/**
+ * One popover at a time. `findAnchor` runs after any pending re-render so the
+ * popover is positioned against the live element, never a detached one.
+ */
+function popover(findAnchor) {
+  closePopover();
+  hideTip();
+  const anchor = findAnchor();
+  if (!anchor || !anchor.isConnected) return null;
+  const pop = el("div", "pop");
+  pop.setAttribute("role", "dialog");
+  document.body.append(pop);
+  requestAnimationFrame(() => {
+    const live = anchor.isConnected ? anchor : findAnchor();
+    if (!live) { pop.remove(); return; }
+    const box = live.getBoundingClientRect();
+    const left = Math.min(window.scrollX + box.left, window.scrollX + window.innerWidth - pop.offsetWidth - 12);
+    pop.style.left = `${Math.max(8, left)}px`;
+    pop.style.top = `${window.scrollY + box.bottom + 6}px`;
+  });
+  return pop;
+}
+
+function closePopover() {
+  const pop = document.querySelector(".pop");
+  if (!pop) return;
+  const dirty = pop.dataset.dirty === "1";
+  pop.remove();
+  const lit = spotlight !== null;
+  spotlight = null;
+  if (dirty || lit) render();
+}
+
+function closedDay(facts) {
+  return facts.weekend || facts.holiday;
+}
+
+function presenceSegment(iso, facts) {
+  const ordinary = facts.presence === "home" && facts.off === "none" && !facts.holiday && !facts.weekend;
+  const choices = [
+    ["wfh", "WFH", "var(--wfh)", facts.status === "wfh" || (facts.confirmed && ordinary), closedDay(facts)],
+    ["office", "Office", COLOR.office, facts.presence === "office", false],
+    ["officeStar", "Office*", COLOR.officeStar, facts.presence === "officeStar", false],
+  ];
+  const seg = el("div", "seg");
+  seg.setAttribute("role", "group");
+  for (const [value, label, color, pressed, disabled] of choices) {
+    const choice = el("button", "", swatch(color), label);
+    choice.type = "button";
+    choice.setAttribute("aria-pressed", String(pressed));
+    choice.disabled = disabled;
+    choice.addEventListener("click", () => set(iso, "presence", value, true));
+    seg.append(choice);
+  }
+  return seg;
+}
+
+function leaveCheck(iso, facts) {
+  const input = el("input", "");
+  input.type = "checkbox";
+  input.checked = facts.off === "leave";
+  input.disabled = closedDay(facts);
+  input.addEventListener("change", () => set(iso, "off", input.checked ? "leave" : "none", false));
+  const label = el("label", "check", input, "Leave");
+  return label;
+}
+
+function set(iso, dim, value, toggleValue) {
+  try {
+    if (value === "wfh") {
+      user = setDay(user, iso, toggleValue && user.days[iso] === "wfh" ? null : "wfh");
+    } else {
+      const state = parseStatus(user.days[iso] ?? null);
+      const neutral = dim === "presence" ? "home" : "none";
+      state[dim] = toggleValue && state[dim] === value ? neutral : value;
+      user = setDay(user, iso, formatStatus({ presence: state.presence, off: state.off }));
+    }
+    const open = Boolean(document.querySelector(".pop"));
+    persist();
+    focusDay(iso);
+    if (open) openDayPopover(iso);
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+function onKey(event) {
+  if (document.querySelector("dialog[open]")) return;
+  if (event.key === "Escape") { closePopover(); hideTip(); return; }
+  if (event.target.matches("input, select, textarea")) return;
+  const focused = document.activeElement?.dataset?.date;
+  if (!focused) return;
+  const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[event.key];
+  if (step) {
+    event.preventDefault();
+    closePopover();
+    hideTip();
+    const next = addDays(focused, step);
+    if (!document.querySelector(`[data-date="${next}"]`)) selectMonth(addMonths(focusMonth, step < 0 ? -1 : 1));
+    selected = weekSaturday(next);
+    render();
+    focusDay(next);
+    return;
+  }
+  const shortcut = KEYS[event.key.toLowerCase()];
+  if (shortcut) {
+    event.preventDefault();
+    const facts = dayFacts(shared.config, user, focused);
+    if (closedDay(facts) && (shortcut[1] === "wfh" || shortcut[1] === "leave")) return;
+    set(focused, shortcut[0], shortcut[1], true);
+  }
+  else if (event.key === "Backspace" || event.key === "Delete") {
+    event.preventDefault();
+    try { user = setDay(user, focused, null); persist(); focusDay(focused); } catch (error) { toast(error.message); }
+  }
+}
+
+/* ---------- confirmation ---------- */
+
+function showConfirmed() {
+  tab = "plan";
+  focusMonth = user.confirmedThrough.slice(0, 7);
+  selected = weekSaturday(user.confirmedThrough);
+  render();
+  focusDay(user.confirmedThrough);
+}
+
+async function confirmDay(iso) {
+  const text = `Lock the record through ${pretty(iso)}. Unmarked weekdays become work from home, and a planned work-from-home day is folded into that.`;
+  if (!(await ask(`Confirm through ${pretty(iso)}`, text, "Confirm"))) return;
+  try {
+    user = confirmThrough(user, iso, today);
+    closePopover();
+    persist();
+    toast(`Confirmed through ${pretty(iso)}`);
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+async function confirmFlow() {
+  const past = unconfirmedPastDates(user, today);
+  if (user.confirmedThrough === today) { toast("Already confirmed through today"); return; }
+  const text = past === null
+    ? `Every day up to and including ${pretty(today)} becomes the record. Unmarked weekdays stay work-from-home days.`
+    : `${past.length + 1} days from ${pretty(past[0] ?? today)} become the record. Correct any day that went differently from the plan first.`;
+  if (!(await ask("Confirm through today", text, "Confirm"))) return;
+  try { user = confirmThrough(user, today, today); persist(); toast(`Confirmed through ${pretty(today)}`); }
+  catch (error) { toast(error.message); }
+}
+
+function saveUsersFile() {
+  remember();
+  download("attendance.json", usersDocument(users));
+  exported = snapshotUsers();
+  render();
+}
+
+/* ---------- admin ---------- */
+
+function admin() {
+  const name = el("input", "name");
+  name.type = "text";
+  name.value = user.name;
+  name.placeholder = `User ${user.id}`;
+  name.setAttribute("aria-label", "Name");
+  name.addEventListener("change", () => { user = { ...user, name: name.value.trim() }; persist(); });
+  name.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); name.blur(); } });
+  const card = el("section", "card",
+    el("h2", "", "User"),
+    el("div", "rows",
+      el("div", "row", el("span", "hint", "Name"), name),
+      el("div", "row", button("New user", "btn", newUser)),
+      el("p", "hint", "Save and Load write every user."),
+    ),
+  );
+  return el("div", "admin", card, holidaysCard(), thresholdsCard());
+}
+
+function holidaysCard() {
+  const { first, last } = timeline();
+  const years = [];
+  for (let year = Number(first.slice(0, 4)); year <= Number(last.slice(0, 4)); year += 1) years.push(year);
+  const yearPick = el("select", "btn", ...years.map((year) => option(String(year), year === adminYear)));
+  yearPick.setAttribute("aria-label", "Year");
+  yearPick.addEventListener("change", () => { adminYear = Number(yearPick.value); render(); });
+  const current = shared.config.holidays.filter((entry) => entry.date.startsWith(`${adminYear}-`));
+  const table = el("div", "htable");
+  for (const entry of current) table.append(holidayRow(entry));
+  if (current.length === 0) table.append(el("div", "empty", `No shared holidays for ${adminYear} yet.`));
+  table.append(holidayRow(null));
+
+  const paste = el("textarea", "paste");
+  paste.placeholder = `${adminYear}-01-26 Republic Day\n${adminYear}-08-15 Independence Day\n…or a JSON array of { "date", "name" }`;
+  paste.setAttribute("aria-label", `Bulk holidays for ${adminYear}`);
+  const bulk = el("details", "bulk",
+    el("summary", "", `Bulk load ${adminYear}`),
+    el("div", "rows", paste, el("div", "row",
+      button(`Replace ${adminYear}`, "btn primary", () => {
+        try {
+          const entries = parseHolidayList(paste.value);
+          updateShared(replaceHolidayYear(shared.config, adminYear, entries));
+          toast(`${entries.length} holidays loaded for ${adminYear}`);
+        } catch (error) { toast(error.message); }
+      }),
+      button(`Clear ${adminYear}`, "btn danger", async () => {
+        if (current.length && await ask(`Clear ${adminYear}`, `Remove all ${current.length} shared holidays for ${adminYear}?`, "Clear")) updateShared(replaceHolidayYear(shared.config, adminYear, []));
+      }),
+    )),
+  );
+  return el("section", "card",
+    el("h2", "", "Shared holidays", el("em", "", `${current.length} in ${adminYear} · ${shared.config.holidays.length} total`)),
+    el("div", "rows",
+      el("div", "row", el("span", "hint", "Year"), yearPick),
+      table,
+      bulk,
+      el("p", "hint", "Shared holidays apply to every user. The planner shows them and cannot change them."),
+    ),
+  );
+}
+
+/** One editable holiday row; `entry` null renders the add row. */
+function holidayRow(entry) {
+  const date = el("input", "");
+  date.type = "date";
+  date.min = `${adminYear}-01-01`;
+  date.max = `${adminYear}-12-31`;
+  date.value = entry?.date ?? "";
+  date.setAttribute("aria-label", entry ? `Date of ${entry.name || "holiday"}` : "New holiday date");
+  const name = el("input", "");
+  name.type = "text";
+  name.placeholder = entry ? "Name" : "Add a holiday";
+  name.value = entry?.name ?? "";
+  name.setAttribute("aria-label", entry ? `Name of holiday on ${entry.date}` : "New holiday name");
+  const commit = () => {
+    if (!date.value) { if (entry) toast("A holiday needs a date"); return; }
+    try {
+      let config = shared.config;
+      if (entry && entry.date !== date.value) config = removeHoliday(config, entry.date);
+      updateShared(upsertHoliday(config, date.value, name.value));
+      if (!entry) toast(`Added ${pretty(date.value)}`);
+    } catch (error) { toast(error.message); }
+  };
+  date.addEventListener("change", () => { if (entry || name.value.trim()) commit(); });
+  name.addEventListener("change", () => { if (entry || date.value) commit(); });
+  name.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); commit(); } });
+  const row = el("div", `hrow${entry ? "" : " add"}`, el("span", "dow", entry ? DAYS[weekday(entry.date)] : ""), date, name);
+  if (entry) {
+    const remove = button("×", "btn ghost x", async () => {
+      if (await ask("Remove holiday", `Remove ${entry.name || "the holiday"} on ${pretty(entry.date)} ${entry.date.slice(0, 4)} for every user?`, "Remove")) updateShared(removeHoliday(shared.config, entry.date));
+    });
+    remove.title = "Remove";
+    remove.setAttribute("aria-label", `Remove ${entry.name || "holiday"}`);
+    row.append(remove);
+  } else {
+    row.append(button("Add", "btn", commit));
+  }
+  return row;
+}
+
+function thresholdsCard() {
+  const rows = el("div", "rows");
+  shared.config.thresholds.forEach((entry, index) => {
+    const from = el("input", ""); from.type = "date"; from.value = entry.from;
+    const rate = el("input", ""); rate.type = "number"; rate.min = "1"; rate.value = String(entry.daysPerWeek);
+    const update = () => updateShared({ ...shared.config, thresholds: shared.config.thresholds.map((t, i) => i === index ? { from: from.value, daysPerWeek: Number(rate.value) } : t) });
+    from.addEventListener("change", update);
+    rate.addEventListener("change", update);
+    rows.append(el("div", "row", el("span", "hint", "From"), from, rate, el("span", "hint", "days a week"),
+      button("Remove", "btn ghost", () => updateShared({ ...shared.config, thresholds: shared.config.thresholds.filter((_, i) => i !== index) }))));
+  });
+  rows.append(
+    el("div", "row", button("Add threshold", "btn", () => updateShared({ ...shared.config, thresholds: [...shared.config.thresholds, { from: today, daysPerWeek: 3 }] }))),
+    el("div", "row",
+      button("Export shared", "btn", () => download("attendance-shared.json", staticDocument(shared.config))),
+      button("Import shared", "btn", () => pickJson((text) => { shared = { config: importStatic(shared.config, text), source: "override" }; store.saveStatic(shared.config); toast("Shared configuration imported"); render(); })),
+      button("Reset to built-in", "btn danger", async () => { if (await ask("Reset shared configuration", "Local edits to thresholds and holidays are discarded.", "Reset")) { store.resetStatic(); shared = store.loadStatic(embedded); render(); } }),
+    ),
+    el("p", "hint", "The threshold in force on a window's last day applies to the whole window. The built-in copy lives inside the page; edits stay in this browser until exported."),
+  );
+  return el("section", "card", el("h2", "", "Quota thresholds", el("em", "", shared.source === "default" ? "built-in" : "edited locally")), rows);
+}
+
+function updateShared(config) {
+  try {
+    shared = { config: parseStatic(staticDocument(config)), source: "override" };
+    store.saveStatic(shared.config);
+    render();
+  } catch (error) {
+    toast(error.message);
+  }
+}
+
+async function loadUsersFile(text) {
+  const incoming = parseUsers(JSON.parse(text));
+  users = incoming;
+  user = incoming[0];
+  store.saveUsers(users);
+  store.setOpenId(user.id);
+  exported = snapshotUsers();
+  render();
+  toast(`Loaded ${incoming.length} user${incoming.length === 1 ? "" : "s"}`);
+}
+
+function newUser() {
+  const id = users.reduce((max, entry) => Math.max(max, entry.id), 0) + 1;
+  user = createUser(id);
+  users = [...users, user];
+  store.saveUsers(users);
+  store.setOpenId(user.id);
+  tab = "admin";
+  render();
+}
+
+function switchUser(id) {
+  const loaded = users.find((entry) => entry.id === id);
+  if (!loaded) return;
+  user = loaded;
+  store.setOpenId(id);
+  render();
+}
+
+/* ---------- helpers ---------- */
+
+function openRecords() {
+  try {
+    users = store.loadUsers();
+  } catch (error) {
+    toast(`Stored records are unreadable: ${error.message}`);
+    users = [];
+  }
+  user = users.find((entry) => entry.id === store.openId()) || users[0] || null;
+  if (user) return;
+  user = createUser(1);
+  users = [user];
+  store.saveUsers(users);
+  store.setOpenId(user.id);
+}
+
+function remember(next = user) {
+  user = next;
+  users = users.map((entry) => entry.id === user.id ? user : entry);
+  store.saveUsers(users);
+}
+
+function persist() {
+  remember();
+  render();
+}
+
+function snapshotUsers() {
+  return JSON.stringify(usersDocument(users));
+}
+
+function labelFor(entry) {
+  return entry.name || `User ${entry.id}`;
+}
+
+function ask(title, text, okLabel, extra) {
+  return new Promise((resolve) => {
+    const dialog = el("dialog", "");
+    const ok = button(okLabel, "btn primary", () => { resolve(true); dialog.close(); });
+    const cancel = button("Cancel", "btn", () => { resolve(false); dialog.close(); });
+    dialog.append(el("div", "dbody", el("h2", "", title), el("p", "", text), extra ?? "", el("div", "dactions", cancel, ok)));
+    dialog.addEventListener("close", () => { resolve(false); dialog.remove(); });
+    document.body.append(dialog);
+    dialog.showModal();
+    (extra?.querySelector("input") ?? ok).focus();
+  });
+}
+
+function pickJson(onText) {
+  const input = el("input", "");
+  input.type = "file";
+  input.accept = "application/json,.json";
+  input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    try { await onText(await file.text()); }
+    catch (error) { toast(error.message); }
+  });
+  input.click();
+}
+
+function download(filename, value) {
+  const link = el("a", "");
+  link.href = URL.createObjectURL(new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: "application/json" }));
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+let toastTimer;
+function toast(message) {
+  $toast.textContent = message;
+  $toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $toast.classList.remove("show"), 2400);
+}
+
+function focusDay(iso) {
+  document.querySelector(`[data-date="${iso}"]`)?.focus({ preventScroll: true });
+}
+
+function pretty(iso) {
+  return `${Number(iso.slice(8))} ${MONTHS[Number(iso.slice(5, 7)) - 1].slice(0, 3)}`;
+}
+
+function addMonths(ym, delta) {
+  const [y, m] = ym.split("-").map(Number);
+  const total = y * 12 + (m - 1) + delta;
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, "0")}`;
+}
+
+function todayISO() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function option(value, selectedOption, label = value) {
+  const node = el("option", "", label);
+  node.value = value;
+  node.selected = selectedOption;
+  return node;
+}
+
+function button(label, className, action) {
+  const node = el("button", className, label);
+  node.type = "button";
+  node.addEventListener("click", action);
+  return node;
+}
+
+function el(tag, className, ...children) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  node.append(...children.filter((child) => child !== "" && child != null));
+  return node;
+}
+
+</script>
+</body>
+</html>
