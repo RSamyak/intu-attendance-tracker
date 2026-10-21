@@ -727,8 +727,6 @@ function parseUser(raw) {
   if (raw.schemaVersion !== 1) throw new ValidationError("Unsupported user schemaVersion");
   if (!Number.isInteger(raw.id) || raw.id < 1) throw new ValidationError("User id must be a positive integer");
   if (typeof raw.name !== "string") throw new ValidationError("Name must be text");
-  if (typeof raw.countOfficeStar !== "boolean") throw new ValidationError("countOfficeStar must be true or false");
-  if (typeof raw.countPlanned !== "boolean") throw new ValidationError("countPlanned must be true or false");
   if (raw.confirmedThrough !== null && !isDate(raw.confirmedThrough)) throw new ValidationError("confirmedThrough must be a date or null");
   if (!isPlainObject(raw.days)) throw new ValidationError("days must be an object");
   const days = {};
@@ -748,8 +746,8 @@ function parseUser(raw) {
     schemaVersion: 1,
     id: raw.id,
     name: raw.name.trim(),
-    countOfficeStar: raw.countOfficeStar,
-    countPlanned: raw.countPlanned,
+    countOfficeStar: raw.countOfficeStar === true,
+    countPlanned: raw.countPlanned === true,
     confirmedThrough: raw.confirmedThrough,
     days,
     notes: parseNotes(raw.notes),
@@ -971,32 +969,57 @@ function ceilDiv(numerator, denominator) {
 }
 
 
+/**
+ * Every read and write below is wrapped so a broken or unavailable storage backend
+ * never throws out of this store: a corrupt value reads as absent, a failed write
+ * just fails to persist. The one exception is `loadUsers`, which does surface a bad
+ * value — the caller needs to tell "nothing stored" from "something unreadable
+ * stored" apart, to never silently overwrite a record that might still be recovered.
+ */
 function createStore(storage) {
+  function read(key) {
+    try { return storage.getItem(key); } catch { return null; }
+  }
+  function write(key, value) {
+    try { storage.setItem(key, value); } catch (error) { toast(`Could not save locally: ${error.message}`); }
+  }
+  function remove(key) {
+    try { storage.removeItem(key); } catch { /* nothing more to do */ }
+  }
   return {
     loadStatic(embedded) {
-      const saved = storage.getItem(staticKey());
+      const saved = read(staticKey());
       if (!saved) return { config: parseStatic(embedded), source: "default" };
-      return { config: parseStatic(JSON.parse(saved)), source: "override" };
+      try {
+        return { config: parseStatic(JSON.parse(saved)), source: "override" };
+      } catch (error) {
+        toast(`Stored holidays could not be read: ${error.message}. Using the built-in copy.`);
+        return { config: parseStatic(embedded), source: "default" };
+      }
     },
     saveStatic(config) {
-      storage.setItem(staticKey(), JSON.stringify(staticDocument(config)));
+      write(staticKey(), JSON.stringify(staticDocument(config)));
     },
     resetStatic() {
-      storage.removeItem(staticKey());
+      remove(staticKey());
     },
     loadUsers() {
-      const saved = storage.getItem(usersKey());
+      const saved = read(usersKey());
       return saved ? parseUsers(JSON.parse(saved)) : [];
     },
     saveUsers(list) {
-      storage.setItem(usersKey(), JSON.stringify(usersDocument(list)));
+      write(usersKey(), JSON.stringify(usersDocument(list)));
     },
     openId() {
-      const id = Number(storage.getItem(openKey()));
+      const id = Number(read(openKey()));
       return Number.isInteger(id) ? id : null;
     },
     setOpenId(id) {
-      storage.setItem(openKey(), String(id));
+      write(openKey(), String(id));
+    },
+    resetUsers() {
+      remove(usersKey());
+      remove(openKey());
     },
   };
 }
@@ -1028,6 +1051,14 @@ const store = createStore(window.localStorage);
 const embedded = parseStatic(JSON.parse(document.getElementById("attendance-static").textContent));
 const today = todayISO();
 
+const $chrome = document.querySelector(".chrome");
+const $top = document.getElementById("top");
+const $tabs = document.getElementById("tabs");
+const $lens = document.getElementById("lens");
+const $view = document.getElementById("view");
+const $toast = document.getElementById("toast");
+let toastTimer;
+
 let shared = store.loadStatic(embedded);
 let users = [];
 let user;
@@ -1044,13 +1075,6 @@ let centred = null; // the month the sidebar last scrolled into view
 function lens() {
   return { countPlanned: user.countPlanned, today };
 }
-
-const $chrome = document.querySelector(".chrome");
-const $top = document.getElementById("top");
-const $tabs = document.getElementById("tabs");
-const $lens = document.getElementById("lens");
-const $view = document.getElementById("view");
-const $toast = document.getElementById("toast");
 
 openRecords();
 exported = snapshotUsers();
@@ -1649,7 +1673,14 @@ function admin() {
       el("p", "hint", "Save and Load write every user."),
     ),
   );
-  return el("div", "admin", card, holidaysCard(), thresholdsCard());
+  const reset = el("section", "card",
+    el("h2", "", "Reset"),
+    el("div", "rows",
+      el("div", "row", button("Reset everything stored in this browser", "btn danger", resetEverything)),
+      el("p", "hint", "Clears every user and the shared holidays kept here. Load a saved file afterwards to bring a record back."),
+    ),
+  );
+  return el("div", "admin", card, holidaysCard(), thresholdsCard(), reset);
 }
 
 function holidaysCard() {
@@ -1787,6 +1818,14 @@ function newUser() {
   render();
 }
 
+async function resetEverything() {
+  const text = "Every user, their days and notes, and the locally edited holidays are discarded from this browser. This cannot be undone here; load a saved file afterwards to restore a record.";
+  if (!(await ask("Reset everything stored in this browser", text, "Reset"))) return;
+  store.resetUsers();
+  store.resetStatic();
+  location.reload();
+}
+
 function switchUser(id) {
   const loaded = users.find((entry) => entry.id === id);
   if (!loaded) return;
@@ -1798,16 +1837,23 @@ function switchUser(id) {
 /* ---------- helpers ---------- */
 
 function openRecords() {
+  // A read failure must never erase what is in storage: leave it untouched, work with a
+  // blank user in memory, and let Load bring in a good file. Only a genuinely empty
+  // browser (nothing stored yet) gets a fresh user written out.
+  let saved = null;
   try {
-    users = store.loadUsers();
+    saved = store.loadUsers();
   } catch (error) {
-    toast(`Stored records are unreadable: ${error.message}`);
-    users = [];
+    toast(`Stored records could not be read: ${error.message}. Use Load to recover a saved file.`);
   }
-  user = users.find((entry) => entry.id === store.openId()) || users[0] || null;
-  if (user) return;
+  if (saved && saved.length > 0) {
+    users = saved;
+    user = users.find((entry) => entry.id === store.openId()) || users[0];
+    return;
+  }
   user = createUser(1);
   users = [user];
+  if (saved === null) return; // unreadable, not empty: do not overwrite it
   store.saveUsers(users);
   store.setOpenId(user.id);
 }
@@ -1865,7 +1911,6 @@ function download(filename, value) {
   URL.revokeObjectURL(link.href);
 }
 
-let toastTimer;
 function toast(message) {
   $toast.textContent = message;
   $toast.classList.add("show");
