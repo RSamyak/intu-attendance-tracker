@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Attendance">
 <title>Attendance</title>
 <style>
 :root {
@@ -29,6 +32,11 @@ header h1 span { color: var(--grey); font-weight: 600; }
 .actions { margin-left: auto; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .status { color: var(--grey); font-size: 12px; margin-right: 6px; }
 .status b { color: var(--red); font-weight: 700; }
+button.syncstate { border: 0; background: none; padding: 4px 0; font-size: 12px; font-weight: 700; color: var(--grey); }
+button.syncstate.good { color: var(--green-ink); }
+button.syncstate.wait { color: var(--holiday-ink); }
+button.syncstate.bad { color: var(--red); }
+.warn { color: var(--red); font-size: 12px; }
 .status .seal-link { border: 0; background: none; padding: 0; font-weight: 800; color: var(--navy); text-decoration: underline; text-underline-offset: 2px; }
 .btn { padding: 6px 11px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 13px; }
 .btn:hover { background: var(--soft); }
@@ -178,7 +186,7 @@ input.note::placeholder { color: var(--faint); }
 .admin .card h2 em { font-style: normal; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--faint); }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .rows { display: grid; gap: 8px; }
-.row input[type="date"], .row input[type="number"], .row input[type="text"] { border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; background: #fff; }
+.row input[type="date"], .row input[type="number"], .row input[type="text"], .row input[type="password"] { border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; background: #fff; }
 .row input[type="number"] { width: 60px; text-align: center; }
 .row input.name { width: 16em; }
 .hint { font-size: 12px; color: var(--grey); }
@@ -530,444 +538,14 @@ kbd { font: inherit; padding: 0 5px; border: 1px solid var(--line); border-botto
   <span><kbd>O</kbd> office · <kbd>S</kbd> office* · <kbd>W</kbd> work from home · <kbd>L</kbd> leave · <kbd>⌫</kbd> unplanned · arrows move</span>
 </footer>
 <div class="toast" id="toast" role="status"></div>
-<script>
-/** Civil dates as YYYY-MM-DD. Weekday uses UTC so a local timezone cannot shift the day. */
-
-const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-function isDate(value) {
-  if (typeof value !== "string" || !DATE.test(value)) return false;
-  const [y, m, d] = value.split("-").map(Number);
-  const utc = new Date(Date.UTC(y, m - 1, d));
-  return utc.getUTCFullYear() === y && utc.getUTCMonth() === m - 1 && utc.getUTCDate() === d;
-}
-
-function weekday(iso) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-}
-
-function isWeekend(iso) {
-  const day = weekday(iso);
-  return day === 0 || day === 6;
-}
-
-function addDays(iso, days) {
-  const [y, m, d] = iso.split("-").map(Number);
-  const utc = new Date(Date.UTC(y, m - 1, d + days));
-  return format(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate());
-}
-
-function compare(a, b) {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-function weekSunday(iso) {
-  return addDays(iso, -weekday(iso));
-}
-
-function weekSaturday(iso) {
-  return addDays(weekSunday(iso), 6);
-}
-
-function eachDate(start, end) {
-  const dates = [];
-  for (let cursor = start; cursor <= end; cursor = addDays(cursor, 1)) dates.push(cursor);
-  return dates;
-}
-
-function monthEnd(iso) {
-  const [y, m] = iso.split("-").map(Number);
-  const utc = new Date(Date.UTC(y, m, 0));
-  return format(utc.getUTCFullYear(), utc.getUTCMonth() + 1, utc.getUTCDate());
-}
-
-function monthStart(iso) {
-  return `${iso.slice(0, 7)}-01`;
-}
-
-function format(y, m, d) {
-  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-}
-
-
-/**
- * A day has two independent facts: where the person was, and whether the day was an off day.
- * Stored as one token: "office", "leave", "office+holiday", "officeStar+leave".
- * "wfh" is an explicit plan to work from home. Once a day is confirmed, that token is
- * dropped: an unmarked weekday in the record is work from home, and only the plan
- * distinguishes "wfh" from an empty day.
- */
-
-const presenceKinds = ["home", "office", "officeStar"];
-const offKinds = ["none", "leave", "holiday"];
-
-function parseStatus(token) {
-  const state = { presence: "home", off: "none" };
-  if (token == null) return state;
-  if (typeof token !== "string" || token === "") return null;
-  if (token === "wfh") return { presence: "home", off: "none", explicit: true };
-  const parts = token.split("+");
-  if (parts.length > 2) return null;
-  for (const part of parts) {
-    if (presenceKinds.includes(part) && part !== "home" && state.presence === "home") state.presence = part;
-    else if (offKinds.includes(part) && part !== "none" && state.off === "none") state.off = part;
-    else return null;
-  }
-  return state;
-}
-
-function formatStatus({ presence, off, explicit = false }) {
-  const parts = [];
-  if (presence !== "home") parts.push(presence);
-  if (off !== "none") parts.push(off);
-  if (parts.length) return parts.join("+");
-  return explicit ? "wfh" : null;
-}
-
-function isStatus(token) {
-  return parseStatus(token) !== null;
-}
-
-
-class ValidationError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "ValidationError";
-  }
-}
-
-/* ---------- shared configuration ---------- */
-
-function parseStatic(raw) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ValidationError("Shared configuration must be an object");
-  if ("users" in raw || "days" in raw || "confirmedThrough" in raw) throw new ValidationError("Shared configuration contains user data");
-  if (raw.schemaVersion !== 1) throw new ValidationError("Unsupported shared configuration schemaVersion");
-  if (!Array.isArray(raw.thresholds) || raw.thresholds.length === 0) throw new ValidationError("At least one threshold is required");
-  const seen = new Set();
-  const thresholds = raw.thresholds.map((entry, index) => {
-    if (!entry || typeof entry !== "object") throw new ValidationError(`Threshold ${index + 1} is invalid`);
-    if (!isDate(entry.from)) throw new ValidationError(`Threshold date ${entry.from} is invalid`);
-    if (seen.has(entry.from)) throw new ValidationError(`Duplicate threshold date ${entry.from}`);
-    seen.add(entry.from);
-    if (!Number.isInteger(entry.daysPerWeek) || entry.daysPerWeek <= 0) throw new ValidationError(`Threshold on ${entry.from} must be a positive whole number`);
-    return { from: entry.from, daysPerWeek: entry.daysPerWeek };
-  }).sort((a, b) => a.from < b.from ? -1 : 1);
-  return { schemaVersion: 1, thresholds, holidays: parseHolidays(raw.holidays) };
-}
-
-function staticDocument(config) {
-  return {
-    schemaVersion: 1,
-    thresholds: config.thresholds.map((entry) => ({ from: entry.from, daysPerWeek: entry.daysPerWeek })),
-    holidays: config.holidays.map((entry) => ({ date: entry.date, name: entry.name })),
-  };
-}
-
-/** Accepts ["2026-01-26"] or [{ date, name }]; returns named holidays sorted by date. */
-function parseHolidays(raw) {
-  if (!Array.isArray(raw)) throw new ValidationError("Holidays must be a list");
-  const seen = new Set();
-  return raw.map((entry) => {
-    const item = typeof entry === "string" ? { date: entry, name: "" } : entry;
-    if (!isPlainObject(item) || !isDate(item.date)) throw new ValidationError(`Holiday ${JSON.stringify(entry)} needs a valid date`);
-    if (item.name !== undefined && typeof item.name !== "string") throw new ValidationError(`Holiday ${item.date} has an invalid name`);
-    if (seen.has(item.date)) throw new ValidationError(`Duplicate holiday ${item.date}`);
-    seen.add(item.date);
-    return { date: item.date, name: (item.name ?? "").trim() };
-  }).sort((a, b) => a.date < b.date ? -1 : 1);
-}
-
-/** Reads a pasted year list: a JSON array, or one "YYYY-MM-DD Name" per line. */
-function parseHolidayList(text) {
-  const trimmed = String(text ?? "").trim();
-  if (!trimmed) throw new ValidationError("The holiday list is empty");
-  if (trimmed.startsWith("[")) return parseHolidays(JSON.parse(trimmed));
-  const entries = trimmed.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
-    const match = line.match(/^(\d{4}-\d{2}-\d{2})(?:[\s,;:\t|–-]+(.*))?$/);
-    if (!match) throw new ValidationError(`Cannot read holiday line: ${line}`);
-    return { date: match[1], name: match[2] ?? "" };
-  });
-  return parseHolidays(entries);
-}
-
-/** Adds or renames one holiday. */
-function upsertHoliday(config, date, name) {
-  if (!isDate(date)) throw new ValidationError(`Holiday date ${date} is invalid`);
-  const others = config.holidays.filter((entry) => entry.date !== date);
-  return parseStatic(staticDocument({ ...config, holidays: [...others, { date, name: String(name ?? "") }] }));
-}
-
-function removeHoliday(config, date) {
-  if (!config.holidays.some((entry) => entry.date === date)) throw new ValidationError(`No holiday on ${date}`);
-  return parseStatic(staticDocument({ ...config, holidays: config.holidays.filter((entry) => entry.date !== date) }));
-}
-
-/** Replaces one calendar year's holidays; other years are untouched. */
-function replaceHolidayYear(config, year, holidays) {
-  const prefix = `${year}-`;
-  const stray = holidays.find((entry) => !entry.date.startsWith(prefix));
-  if (stray) throw new ValidationError(`${stray.date} is outside ${year}`);
-  const kept = config.holidays.filter((entry) => !entry.date.startsWith(prefix));
-  return parseStatic(staticDocument({ ...config, holidays: [...kept, ...holidays] }));
-}
-
-/* ---------- user document ---------- */
-
-const USER_FIELDS = ["schemaVersion", "id", "name", "countOfficeStar", "countPlanned", "confirmedThrough", "days", "notes"];
-const NOTE_KEYS = {
-  days: (key) => isDate(key),
-  weeks: (key) => isDate(key) && weekday(key) === 0,
-  months: (key) => /^\d{4}-(0[1-9]|1[0-2])$/.test(key),
-};
-
-function parseUser(raw) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ValidationError("User document must be an object");
-  if ("thresholds" in raw || "holidays" in raw) throw new ValidationError("User document contains shared configuration");
-  if (raw.schemaVersion !== 1) throw new ValidationError("Unsupported user schemaVersion");
-  if (!Number.isInteger(raw.id) || raw.id < 1) throw new ValidationError("User id must be a positive integer");
-  if (typeof raw.name !== "string") throw new ValidationError("Name must be text");
-  if (raw.confirmedThrough !== null && !isDate(raw.confirmedThrough)) throw new ValidationError("confirmedThrough must be a date or null");
-  if (!isPlainObject(raw.days)) throw new ValidationError("days must be an object");
-  const days = {};
-  for (const [iso, token] of Object.entries(raw.days)) {
-    if (!isDate(iso)) throw new ValidationError(`Day ${iso} is not a valid date`);
-    const state = parseStatus(token);
-    if (state === null) throw new ValidationError(`Unknown status ${token} on ${iso}`);
-    const canonical = formatStatus(state);
-    if (canonical) days[iso] = canonical;
-  }
-  const preserved = {};
-  for (const [key, value] of Object.entries(raw)) {
-    if (!USER_FIELDS.includes(key)) preserved[key] = value;
-  }
-  return {
-    ...preserved,
-    schemaVersion: 1,
-    id: raw.id,
-    name: raw.name.trim(),
-    countOfficeStar: raw.countOfficeStar === true,
-    countPlanned: raw.countPlanned === true,
-    confirmedThrough: raw.confirmedThrough,
-    days,
-    notes: parseNotes(raw.notes),
-  };
-}
-
-function parseNotes(raw) {
-  const notes = emptyNotes();
-  if (raw === undefined) return notes;
-  if (!isPlainObject(raw)) throw new ValidationError("notes must be an object");
-  for (const scope of Object.keys(raw)) {
-    if (!(scope in NOTE_KEYS)) throw new ValidationError(`Unknown note scope ${scope}`);
-    if (!isPlainObject(raw[scope])) throw new ValidationError(`notes.${scope} must be an object`);
-    for (const [key, text] of Object.entries(raw[scope])) {
-      if (!NOTE_KEYS[scope](key)) throw new ValidationError(`Note key ${key} is not valid for ${scope}`);
-      if (typeof text !== "string") throw new ValidationError(`Note on ${key} must be text`);
-      if (text.trim()) notes[scope][key] = text.trim();
-    }
-  }
-  return notes;
-}
-
-function emptyNotes() {
-  return { days: {}, weeks: {}, months: {} };
-}
-
-function userDocument(user) {
-  const preserved = {};
-  for (const [key, value] of Object.entries(user)) {
-    if (!USER_FIELDS.includes(key)) preserved[key] = value;
-  }
-  return {
-    ...preserved,
-    schemaVersion: 1,
-    id: user.id,
-    name: user.name,
-    countOfficeStar: user.countOfficeStar,
-    countPlanned: user.countPlanned,
-    confirmedThrough: user.confirmedThrough,
-    days: sorted(user.days),
-    notes: { days: sorted(user.notes.days), weeks: sorted(user.notes.weeks), months: sorted(user.notes.months) },
-  };
-}
-
-function createUser(id, name = "") {
-  return parseUser({ schemaVersion: 1, id, name, countOfficeStar: false, countPlanned: false, confirmedThrough: null, days: {}, notes: emptyNotes() });
-}
-
-function usersDocument(list) {
-  return { schemaVersion: 1, users: list.map(userDocument) };
-}
-
-function parseUsers(raw) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ValidationError("Attendance file must be an object");
-  if (raw.schemaVersion !== 1) throw new ValidationError("Unsupported attendance file schemaVersion");
-  if (!Array.isArray(raw.users) || raw.users.length === 0) throw new ValidationError("Attendance file needs at least one user");
-  const seen = new Set();
-  return raw.users.map((entry) => {
-    const parsed = parseUser(entry);
-    if (seen.has(parsed.id)) throw new ValidationError(`Duplicate user ${parsed.id}`);
-    seen.add(parsed.id);
-    return parsed;
-  });
-}
-
-/* ---------- edits ---------- */
-
-function setDay(user, iso, token) {
-  if (!isDate(iso)) throw new ValidationError(`Day ${iso} is not a valid date`);
-  const state = parseStatus(token);
-  if (state === null) throw new ValidationError(`Unknown status ${token}`);
-  const days = { ...user.days };
-  const canonical = formatStatus(state);
-  if (canonical === null) delete days[iso];
-  else days[iso] = canonical;
-  return { ...user, days };
-}
-
-function setNote(user, scope, key, text) {
-  if (!(scope in NOTE_KEYS)) throw new ValidationError(`Unknown note scope ${scope}`);
-  if (!NOTE_KEYS[scope](key)) throw new ValidationError(`Note key ${key} is not valid for ${scope}`);
-  if (typeof text !== "string") throw new ValidationError("A note must be text");
-  const map = { ...user.notes[scope] };
-  if (text.trim()) map[key] = text.trim();
-  else delete map[key];
-  return { ...user, notes: { ...user.notes, [scope]: map } };
-}
-
-function confirmThrough(user, iso, today) {
-  if (!isDate(iso) || !isDate(today)) throw new ValidationError("Confirmation requires valid dates");
-  if (iso > today) throw new ValidationError("A future date cannot be confirmed");
-  if (user.confirmedThrough && iso <= user.confirmedThrough) throw new ValidationError("Confirmation must move forward");
-  const days = { ...user.days };
-  for (const date of Object.keys(days)) {
-    if (date <= iso && days[date] === "wfh") delete days[date];
-  }
-  return { ...user, confirmedThrough: iso, days };
-}
-
-function reopenThrough(user, iso) {
-  if (iso !== null && !isDate(iso)) throw new ValidationError("Reopen requires a date or null");
-  if (!user.confirmedThrough) throw new ValidationError("Nothing is confirmed");
-  if (iso !== null && iso >= user.confirmedThrough) throw new ValidationError("Reopen must move backward");
-  return { ...user, confirmedThrough: iso };
-}
-
-function unconfirmedPastDates(user, today) {
-  if (!user.confirmedThrough) return null;
-  const start = addDays(user.confirmedThrough, 1);
-  const yesterday = addDays(today, -1);
-  if (start > yesterday) return [];
-  return eachDate(start, yesterday);
-}
-
-/* ---------- helpers ---------- */
-
-function isPlainObject(value) {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function sorted(map) {
-  return Object.fromEntries(Object.entries(map).sort(([a], [b]) => a < b ? -1 : 1));
-}
-
-
-function thresholdFor(staticConfig, iso) {
-  let current = null;
-  for (const entry of staticConfig.thresholds) {
-    if (entry.from <= iso) current = entry.daysPerWeek;
-  }
-  if (current == null) throw new Error(`No threshold is in force on ${iso}`);
-  return current;
-}
-
-function dayFacts(staticConfig, user, iso) {
-  const token = user.days[iso] ?? null;
-  const { presence, off } = parseStatus(token);
-  const weekend = isWeekend(iso);
-  const shared = staticConfig.holidays.find((entry) => entry.date === iso) ?? null;
-  const holiday = shared !== null || off === "holiday";
-  const onLeave = off === "leave";
-  const confirmed = Boolean(user.confirmedThrough) && compare(iso, user.confirmedThrough) <= 0;
-  const counted = presence === "office" || (presence === "officeStar" && user.countOfficeStar);
-  return {
-    date: iso,
-    status: token,
-    presence,
-    off,
-    weekend,
-    holiday,
-    holidayName: shared ? shared.name : null,
-    onLeave,
-    eligible: !weekend && !holiday && !onLeave,
-    counted,
-    confirmed,
-  };
-}
-
-/**
- * Current method: the Sunday–Saturday week that contains `iso` plus the three weeks before it.
- * `view.today` splits counted days into done (on or before today) and planned (after today);
- * `view.countPlanned` adds planned days to the count (the sheet's "Planned" switch); the default counts done days only.
- */
-function rolling(staticConfig, user, iso, view = {}) {
-  const end = weekSaturday(iso);
-  const start = weekSunday(addDays(end, -21));
-  return summarize(staticConfig, user, start, end, "rolling", view);
-}
-
-/** Legacy method: the calendar month that contains `iso`. */
-function month(staticConfig, user, iso, view = {}) {
-  return summarize(staticConfig, user, monthStart(iso), monthEnd(iso), "month", view);
-}
-
-function expectedFor(eligible, daysPerWeek, formula) {
-  return formula === "month"
-    ? ceilDiv(eligible * daysPerWeek, 5)
-    : roundDivHalfAway(eligible * daysPerWeek, 5);
-}
-
-function summarize(staticConfig, user, start, end, formula, view) {
-  const facts = eachDate(start, end).map((iso) => dayFacts(staticConfig, user, iso));
-  const eligible = facts.filter((day) => day.eligible).length;
-  const isDone = (day) => view.today == null || day.date <= view.today;
-  const confirmedCounted = facts.filter((day) => day.counted && day.confirmed).length;
-  const doneCounted = facts.filter((day) => day.counted && isDone(day)).length;
-  const plannedCounted = facts.filter((day) => day.counted && !isDone(day)).length;
-  const counted = view.countPlanned ? doneCounted + plannedCounted : doneCounted;
-  const daysPerWeek = thresholdFor(staticConfig, end);
-  const expected = expectedFor(eligible, daysPerWeek, formula);
-  const needed = Math.max(0, expected - counted);
-  return {
-    formula,
-    start,
-    end,
-    daysPerWeek,
-    eligible,
-    counted,
-    confirmedCounted,
-    doneCounted,
-    plannedCounted,
-    expected,
-    needed,
-    perWeek: expected === 0 ? null : roundDivHalfAway(daysPerWeek * counted * 10, expected) / 10,
-  };
-}
-
-function roundDivHalfAway(numerator, denominator) {
-  const negative = numerator < 0;
-  const n = Math.abs(numerator);
-  const q = Math.floor(n / denominator);
-  const remainder = n % denominator;
-  const rounded = remainder * 2 >= denominator ? q + 1 : q;
-  return negative ? -rounded : rounded;
-}
-
-function ceilDiv(numerator, denominator) {
-  return Math.floor((numerator + denominator - 1) / denominator);
-}
-
+<script type="module">
+import {
+  addDays, confirmThrough, createUser, dayFacts, eachDate, expectedFor, formatStatus, month, monthEnd, monthStart,
+  parseHolidayList, parseStatic, parseStatus, parseUsers, reconcile, removeHoliday, replaceHolidayYear,
+  rolling, setDay, setNote, starterUsers, staticDocument, unconfirmedPastDates, upsertHoliday,
+  usersDocument, weekSaturday, weekSunday, weekday,
+} from "./record.js";
+import { createRemote, RemoteError } from "./github.js";
 
 /**
  * Every read and write below is wrapped so a broken or unavailable storage backend
@@ -1021,6 +599,22 @@ function createStore(storage) {
       remove(usersKey());
       remove(openKey());
     },
+    loadLink() {
+      try { return JSON.parse(read(linkKey()) ?? "null"); } catch { return null; }
+    },
+    setLink(link) {
+      if (link) write(linkKey(), JSON.stringify(link));
+      else remove(linkKey());
+    },
+    loadSync() {
+      try { return JSON.parse(read(syncKey()) ?? "null"); } catch { return null; }
+    },
+    saveSync(meta) {
+      write(syncKey(), JSON.stringify(meta));
+    },
+    clearSync() {
+      remove(syncKey());
+    },
   };
 }
 
@@ -1038,6 +632,14 @@ function usersKey() {
 
 function openKey() {
   return "attendance:openUser";
+}
+
+function linkKey() {
+  return "attendance:link";
+}
+
+function syncKey() {
+  return "attendance:sync";
 }
 
 const PRESENCE = { home: "Home", office: "Office", officeStar: "Office*" };
@@ -1070,12 +672,18 @@ let adminYear = Number(today.slice(0, 4));
 const openYears = new Set([today.slice(0, 4)]);
 let spotlight = null; // {start, end} of the rolling window shown while a week popover is open
 let centred = null; // the month the sidebar last scrolled into view
+let recordsUnreadable = false;
+let syncing = false;
+let syncAgain = false;
+let syncError = "";
+let syncTimer;
 
 /** Rolling and monthly results for the planner: today splits done from planned. */
 function lens() {
   return { countPlanned: user.countPlanned, today };
 }
 
+takeLink(location.hash);
 openRecords();
 exported = snapshotUsers();
 
@@ -1089,6 +697,12 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest(".pop, .day, .mbtn, .stat")) closePopover();
 });
 render();
+runSync();
+addEventListener("hashchange", () => { if (takeLink(location.hash)) runSync(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") runSync(); });
+addEventListener("online", runSync);
+addEventListener("offline", paintStatus);
+setInterval(() => { if (document.visibilityState === "visible") runSync(); }, 60_000);
 
 /* ---------- shell ---------- */
 
@@ -1138,17 +752,24 @@ function renderTop() {
     if (past.length > 0) status.append(" · ", el("b", "", `${past.length} day${past.length === 1 ? "" : "s"} to confirm`));
   }
   const dirty = snapshotUsers() !== exported;
+  const syncButton = button("", "syncstate", () => {
+    if (!store.loadLink() || syncError) { tab = "admin"; render(); return; }
+    runSync();
+  });
+  syncButton.id = "syncstate";
   $top.replaceChildren(
     el("h1", "", "Attendance"),
     picker,
     el("div", "actions",
       status,
+      syncButton,
       button("Save", `btn${dirty ? " dirty" : ""}`, saveUsersFile),
       button("Load", "btn", () => pickJson(loadUsersFile)),
       button("Today", "btn", () => { tab = "plan"; focusMonth = today.slice(0, 7); selected = weekSaturday(today); render(); }),
       button("Confirm", "btn primary", confirmFlow),
     ),
   );
+  paintStatus();
 }
 
 /* ---------- planner ---------- */
@@ -1677,10 +1298,10 @@ function admin() {
     el("h2", "", "Reset"),
     el("div", "rows",
       el("div", "row", button("Reset everything stored in this browser", "btn danger", resetEverything)),
-      el("p", "hint", "Clears every user and the shared holidays kept here. Load a saved file afterwards to bring a record back."),
+      el("p", "hint", "Clears every user and the shared holidays kept here.  Load a saved file to bring a record back.  A connected repo is fetched again."),
     ),
   );
-  return el("div", "admin", card, holidaysCard(), thresholdsCard(), reset);
+  return el("div", "admin", card, syncCard(), holidaysCard(), thresholdsCard(), reset);
 }
 
 function holidaysCard() {
@@ -1779,10 +1400,10 @@ function thresholdsCard() {
     el("div", "row", button("Add threshold", "btn", () => updateShared({ ...shared.config, thresholds: [...shared.config.thresholds, { from: today, daysPerWeek: 3 }] }))),
     el("div", "row",
       button("Export shared", "btn", () => download("attendance-shared.json", staticDocument(shared.config))),
-      button("Import shared", "btn", () => pickJson((text) => { shared = { config: importStatic(shared.config, text), source: "override" }; store.saveStatic(shared.config); toast("Shared configuration imported"); render(); })),
-      button("Reset to built-in", "btn danger", async () => { if (await ask("Reset shared configuration", "Local edits to thresholds and holidays are discarded.", "Reset")) { store.resetStatic(); shared = store.loadStatic(embedded); render(); } }),
+      button("Import shared", "btn", () => pickJson((text) => { shared = { config: importStatic(shared.config, text), source: "override" }; store.saveStatic(shared.config); toast("Shared configuration imported"); scheduleSync(); render(); })),
+      button("Reset to built-in", "btn danger", async () => { if (await ask("Reset shared configuration", "Local edits to thresholds and holidays are discarded.", "Reset")) { store.resetStatic(); shared = store.loadStatic(embedded); scheduleSync(); render(); } }),
     ),
-    el("p", "hint", "The threshold in force on a window's last day applies to the whole window. The built-in copy lives inside the page; edits stay in this browser until exported."),
+    el("p", "hint", "The threshold in force on a window's last day applies to the whole window.  The built-in copy lives inside the page.  Edits stay in this browser until exported or synced."),
   );
   return el("section", "card", el("h2", "", "Quota thresholds", el("em", "", shared.source === "default" ? "built-in" : "edited locally")), rows);
 }
@@ -1791,6 +1412,7 @@ function updateShared(config) {
   try {
     shared = { config: parseStatic(staticDocument(config)), source: "override" };
     store.saveStatic(shared.config);
+    scheduleSync();
     render();
   } catch (error) {
     toast(error.message);
@@ -1804,6 +1426,7 @@ async function loadUsersFile(text) {
   store.saveUsers(users);
   store.setOpenId(user.id);
   exported = snapshotUsers();
+  scheduleSync();
   render();
   toast(`Loaded ${incoming.length} user${incoming.length === 1 ? "" : "s"}`);
 }
@@ -1815,14 +1438,18 @@ function newUser() {
   store.saveUsers(users);
   store.setOpenId(user.id);
   tab = "admin";
+  scheduleSync();
   render();
 }
 
 async function resetEverything() {
-  const text = "Every user, their days and notes, and the locally edited holidays are discarded from this browser. This cannot be undone here; load a saved file afterwards to restore a record.";
+  const text = store.loadLink()
+    ? "Every user and the locally edited holidays are discarded from this browser, then fetched again from the repo."
+    : "Every user, their days and notes, and the locally edited holidays are discarded from this browser.  This cannot be undone here; load a saved file afterwards to restore a record.";
   if (!(await ask("Reset everything stored in this browser", text, "Reset"))) return;
   store.resetUsers();
   store.resetStatic();
+  store.clearSync();
   location.reload();
 }
 
@@ -1853,7 +1480,7 @@ function openRecords() {
   }
   user = createUser(1);
   users = [user];
-  if (saved === null) return; // unreadable, not empty: do not overwrite it
+  if (saved === null) { recordsUnreadable = true; return; } // unreadable, not empty: do not overwrite it
   store.saveUsers(users);
   store.setOpenId(user.id);
 }
@@ -1862,6 +1489,7 @@ function remember(next = user) {
   user = next;
   users = users.map((entry) => entry.id === user.id ? user : entry);
   store.saveUsers(users);
+  scheduleSync();
 }
 
 function persist() {
@@ -1903,9 +1531,13 @@ function pickJson(onText) {
   input.click();
 }
 
+function fileText(value) {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
 function download(filename, value) {
   const link = el("a", "");
-  link.href = URL.createObjectURL(new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: "application/json" }));
+  link.href = URL.createObjectURL(new Blob([fileText(value)], { type: "application/json" }));
   link.download = filename;
   link.click();
   URL.revokeObjectURL(link.href);
@@ -1956,6 +1588,243 @@ function el(tag, className, ...children) {
   if (className) node.className = className;
   node.append(...children.filter((child) => child !== "" && child != null));
   return node;
+}
+
+/* ---------- sync ---------- */
+
+// A share link carries the repo and its token after `#`, so it never reaches a server.
+function parseLink(text) {
+  const hash = String(text).split("#")[1];
+  if (!hash) return null;
+  const params = new URLSearchParams(hash);
+  const repo = params.get("repo");
+  const token = params.get("token");
+  return repo && token ? { repo, token, who: params.get("who") ?? "" } : null;
+}
+
+function takeLink(hash) {
+  const link = parseLink(hash);
+  if (!link) return false;
+  store.setLink({ repo: link.repo, token: link.token, ...(link.who && { who: link.who }) });
+  // The Home Screen icon keeps this address, and none of Safari's storage.  Leave the link in Safari
+  // so Add to Home Screen can hand it to the icon.  The icon then saves it and takes it out of the address.
+  if (navigator.standalone || matchMedia("(display-mode: standalone)").matches) history.replaceState(null, "", `${location.pathname}${location.search}`);
+  return true;
+}
+
+function gitAuthor(who) {
+  const name = String(who ?? "").trim();
+  if (!name) return null;
+  const local = name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "") || "friend";
+  return { name, email: `${local}@attendance.invalid` };
+}
+
+function unsent() {
+  const saved = store.loadSync();
+  if (!saved?.usersBase || !saved?.sharedBase) return true;
+  try {
+    return JSON.stringify(usersDocument(users)) !== JSON.stringify(saved.usersBase)
+      || JSON.stringify(staticDocument(shared.config)) !== JSON.stringify(saved.sharedBase);
+  } catch {
+    return true;
+  }
+}
+
+function paintStatus() {
+  const node = document.getElementById("syncstate");
+  if (!node) return;
+  const link = store.loadLink();
+  const waiting = Boolean(link) && unsent();
+  const [words, tone] = !link ? ["Local only", ""]
+    : syncing ? ["Syncing…", ""]
+    : syncError ? ["Sync failed", "bad"]
+    : !navigator.onLine ? [waiting ? "Offline · to send" : "Offline", "wait"]
+    : waiting ? ["To send", "wait"]
+    : ["Synced", "good"];
+  node.textContent = words;
+  node.className = `syncstate ${tone}`;
+  node.title = syncError || (link ? `With ${link.repo}` : "Sync from Admin");
+}
+
+function scheduleSync() {
+  if (!store.loadLink() || recordsUnreadable) return paintStatus();
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => { syncTimer = null; runSync(); }, 4000);
+  paintStatus();
+}
+
+async function runSync() {
+  const link = store.loadLink();
+  if (!link) return paintStatus();
+  if (recordsUnreadable) {
+    syncError = "Stored records could not be read, so nothing was sent.";
+    return paintStatus();
+  }
+  if (syncing) return void (syncAgain = true);
+  syncing = true;
+  syncError = "";
+  paintStatus();
+  let attempts = 0;
+  try {
+    const remote = createRemote(link);
+    const author = gitAuthor(link.who);
+    while (attempts < 3) {
+      attempts += 1;
+      const usersFile = await remote.read("attendance.json");
+      const sharedFile = await remote.read("shared.json");
+      const remoteUsers = usersFile ? parseUsers(JSON.parse(usersFile.text)) : null;
+      const remoteShared = sharedFile ? parseStatic(JSON.parse(sharedFile.text)) : null;
+      const saved = store.loadSync();
+      const merged = reconcile({
+        localUsers: users,
+        remoteUsers,
+        baseUsers: saved?.usersBase ? parseUsers(saved.usersBase) : starterUsers(),
+        localShared: shared.config,
+        remoteShared,
+        baseShared: saved?.sharedBase ? parseStatic(saved.sharedBase) : embedded,
+      });
+      let usersSha = usersFile?.sha ?? null;
+      let sharedSha = sharedFile?.sha ?? null;
+      try {
+        if (merged.writeUsers) usersSha = await remote.write("attendance.json", fileText(usersDocument(merged.users)), "attendance record", usersSha, author);
+        if (merged.writeShared) sharedSha = await remote.write("shared.json", fileText(staticDocument(merged.shared)), "shared holidays", sharedSha, author);
+      } catch (error) {
+        if (error instanceof RemoteError && error.status === 409 && attempts < 3) continue;
+        throw error;
+      }
+      store.saveSync({
+        usersSha,
+        sharedSha,
+        usersBase: usersDocument(merged.users),
+        sharedBase: staticDocument(merged.shared),
+        syncedAt: new Date().toISOString(),
+      });
+      const usersChanged = snapshotUsers() !== JSON.stringify(usersDocument(merged.users));
+      const sharedChanged = JSON.stringify(staticDocument(shared.config)) !== JSON.stringify(staticDocument(merged.shared));
+      if (usersChanged) {
+        users = merged.users;
+        user = users.find((entry) => entry.id === user.id) || users[0];
+        store.saveUsers(users);
+        store.setOpenId(user.id);
+      }
+      if (sharedChanged) {
+        shared = { config: merged.shared, source: "override" };
+        store.saveStatic(shared.config);
+      }
+      if (merged.notices.length) toast(merged.notices.join(" "));
+      const typing = document.activeElement?.matches("input, textarea, select");
+      if ((usersChanged || sharedChanged) && !typing) render();
+      break;
+    }
+  } catch (error) {
+    syncError = error instanceof RemoteError && error.status === 401 ? "GitHub refused the token."
+      : error instanceof RemoteError && error.status === 404 ? "No such repo, or the token cannot see it."
+      : navigator.onLine ? error.message : "";
+  }
+  syncing = false;
+  if (syncAgain) {
+    syncAgain = false;
+    return runSync();
+  }
+  paintStatus();
+}
+
+function syncCard() {
+  const link = store.loadLink();
+  if (link) {
+    const who = el("input", "name");
+    who.type = "text";
+    who.value = link.who ?? "";
+    who.placeholder = "Your name";
+    who.autocomplete = "off";
+    who.setAttribute("aria-label", "Name on commits");
+    who.addEventListener("change", () => {
+      const name = who.value.trim();
+      store.setLink({ repo: link.repo, token: link.token, ...(name && { who: name }) });
+    });
+    const when = store.loadSync()?.syncedAt;
+    return el("section", "card",
+      el("h2", "", "Sync"),
+      el("div", "rows",
+        el("p", "", `With ${link.repo}.`),
+        when ? el("p", "hint", `Matched it at ${new Date(when).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}.`) : "",
+        syncError ? el("p", "warn", syncError) : "",
+        el("div", "row", button("Sync now", "btn", runSync), button("Share link", "btn", shareLink)),
+        el("div", "row", el("span", "hint", "Name on commits"), who),
+        el("div", "row", button("Disconnect", "btn danger", disconnect)),
+        el("p", "hint", "Share link carries the token.  On iPhone, open it in Safari and add it to the Home Screen.  The icon keeps the link."),
+      ),
+    );
+  }
+  const repo = el("input", "name");
+  repo.type = "text";
+  repo.placeholder = "owner/repo";
+  repo.autocomplete = "off";
+  repo.spellcheck = false;
+  repo.setAttribute("aria-label", "Repository");
+  const token = el("input", "name");
+  token.type = "password";
+  token.placeholder = "github_pat_…";
+  token.autocomplete = "off";
+  token.spellcheck = false;
+  token.setAttribute("aria-label", "Token");
+  const error = el("p", "warn");
+  const fill = (value) => {
+    const parsed = parseLink(value);
+    if (!parsed) return;
+    repo.value = parsed.repo;
+    token.value = parsed.token;
+  };
+  repo.addEventListener("input", () => fill(repo.value));
+  token.addEventListener("input", () => fill(token.value));
+  return el("section", "card",
+    el("h2", "", "Sync"),
+    el("div", "rows",
+      el("p", "hint", "A private repo made from the template, and a fine-grained token for that repo only, with Contents read and write.  Or paste a share link."),
+      el("div", "row", el("span", "hint", "Repository"), repo),
+      el("div", "row", el("span", "hint", "Token"), token),
+      error,
+      el("div", "row", button("Connect", "btn primary", async () => {
+        error.textContent = "";
+        const next = { repo: repo.value.trim(), token: token.value.trim() };
+        if (!next.repo || !next.token) { error.textContent = "The repo and the token are both needed."; return; }
+        try {
+          await createRemote(next).probe();
+        } catch (err) {
+          error.textContent = err instanceof RemoteError && err.status === 401 ? "GitHub refused the token." : err instanceof RemoteError && err.status === 404 ? "No such repo, or the token cannot see it." : err.message;
+          return;
+        }
+        const pasted = parseLink(repo.value) || parseLink(token.value);
+        store.setLink({ ...next, ...(pasted?.who && { who: pasted.who }) });
+        syncError = "";
+        render();
+        runSync();
+      })),
+    ),
+  );
+}
+
+async function shareLink() {
+  const link = store.loadLink();
+  if (!link) return;
+  const url = `${location.origin}${location.pathname}${location.search}#${new URLSearchParams({ repo: link.repo, token: link.token, ...(link.who && { who: link.who }) })}`;
+  try {
+    if (navigator.share) await navigator.share({ title: "Attendance", url });
+    else {
+      await navigator.clipboard.writeText(url);
+      toast("Link copied");
+    }
+  } catch (error) {
+    if (error.name !== "AbortError") toast("Could not share the link");
+  }
+}
+
+async function disconnect() {
+  if (!(await ask("Disconnect", "Stop syncing this device?  Its record stays here.", "Disconnect"))) return;
+  store.setLink(null);
+  store.clearSync();
+  syncError = "";
+  render();
 }
 
 </script>
